@@ -116,7 +116,9 @@ class PhimApiSource(Source):
                 timeout=20,
             )
             r.raise_for_status()
-            return r.json().get("data", {}).get("items", [])
+            data = r.json() or {}
+            items = (data.get("data") or {}).get("items")
+            return items if isinstance(items, list) else []
         except Exception as exc:
             log.debug("%s search failed for %r: %s", self.name, keyword, exc)
             return []
@@ -126,6 +128,8 @@ class PhimApiSource(Source):
             r = self.session.get(f"{self.base_url}/phim/{slug}", timeout=20)
             r.raise_for_status()
             data = r.json()
+            if not isinstance(data, dict):
+                return None
             return data if data.get("status") is not False else None
         except Exception as exc:
             log.debug("%s detail failed for %r: %s", self.name, slug, exc)

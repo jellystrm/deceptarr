@@ -73,6 +73,55 @@ def _error_response() -> MagicMock:
 
 # ── Movie resolution ──────────────────────────────────────────────────────────
 
+class TestSearchRobustness:
+    """Regression: API returning {"data":{"items":null}} must not crash."""
+
+    def _null_items_resp(self):
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.raise_for_status = MagicMock()
+        resp.json.return_value = {"data": {"items": None}}
+        return resp
+
+    def _null_data_resp(self):
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.raise_for_status = MagicMock()
+        resp.json.return_value = {"data": None}
+        return resp
+
+    def test_search_returns_list_when_items_null(self):
+        source = _source()
+        with patch.object(source.session, "get", return_value=self._null_items_resp()):
+            assert source._search("anything") == []
+
+    def test_search_returns_list_when_data_null(self):
+        source = _source()
+        with patch.object(source.session, "get", return_value=self._null_data_resp()):
+            assert source._search("anything") == []
+
+    def test_resolve_movie_falls_through_to_tmdb_when_search_null(self):
+        """The original crash: null items broke the for-loop before tmdb fallback."""
+        source = _source()
+        tmdb_resp = _tmdb_direct_response("avengers-direct")
+        detail = _detail_response("avengers-direct",
+                                  _hls_episodes(["https://cdn/x.m3u8"]))
+        with patch.object(source.session, "get") as mock_get:
+            mock_get.side_effect = [self._null_items_resp(), tmdb_resp, detail]
+            hit = source.resolve_movie(_movie())
+        assert hit is not None
+        assert hit.hls_url == "https://cdn/x.m3u8"
+
+    def test_detail_handles_non_dict_json(self):
+        source = _source()
+        resp = MagicMock()
+        resp.status_code = 200
+        resp.raise_for_status = MagicMock()
+        resp.json.return_value = None
+        with patch.object(source.session, "get", return_value=resp):
+            assert source._detail("slug") is None
+
+
 class TestResolveMovie:
     def test_resolves_via_search(self):
         source = _source()
