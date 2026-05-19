@@ -253,32 +253,56 @@ def _indexer_card(settings: Settings) -> str:
     if not searches:
         body = "<p style='color:var(--muted);font-size:13px;padding:16px'>No indexer queries yet.</p>"
     else:
-        rows = []
+        # Deduplicate: keep the most-recent search per (kind prefix + title).
+        # E.g. "TV: Family Guy" searched twice → show once with most-recent timestamp.
+        seen: dict[str, object] = {}
         for ev in searches:
+            key = ev.title  # already "TV: Family Guy" or "Movie: Mario"
+            if key not in seen:
+                seen[key] = ev
+        deduped = list(seen.values())
+
+        rows = []
+        for ev in deduped:
             age = _time_ago(max(0, now - ev.ts))
-            # detail = "5 result(s) — sources: ophim"
-            results_part = ev.detail.split(" — ")[0] if " — " in ev.detail else ev.detail
+            # Split "TV: Family Guy" → kind="TV", show="Family Guy"
+            if ": " in ev.title:
+                kind_prefix, show_title = ev.title.split(": ", 1)
+            else:
+                kind_prefix, show_title = "", ev.title
             dot = "ok" if ev.status == "ok" else "err"
+            # results count part: "5 result(s) — sources: ophim" → "5 result(s)"
+            results_part = ev.detail.split(" — ")[0] if " — " in ev.detail else ev.detail
             # Collapsible result list
             result_items = getattr(ev, "results", []) or []
+            ev_url = getattr(ev, "url", "") or ""
             if result_items:
                 items_html = "".join(
                     f"<div style='font-size:12px;padding:3px 0;border-bottom:1px solid var(--border);color:var(--text)'>"
                     f"{html.escape(t)}</div>"
                     for t in result_items
                 )
+                link_html = (
+                    f"<div style='margin-top:6px'>"
+                    f"<a href='{html.escape(ev_url)}' target='_blank' style='font-size:11px;color:var(--accent)'>"
+                    f"↗ open XML</a></div>"
+                ) if ev_url else ""
                 results_detail = (
                     f"<details class='pipe-detail'>"
                     f"<summary>{html.escape(results_part)}</summary>"
                     f"<div style='margin-top:6px;padding:8px 12px;background:rgba(0,0,0,0.2);border-radius:6px;border:1px solid var(--border)'>"
-                    f"{items_html}</div></details>"
+                    f"{items_html}{link_html}</div></details>"
                 )
             else:
-                results_detail = f"<span style='color:var(--muted);font-size:12px'>{html.escape(results_part)}</span>"
+                link_html = (
+                    f" <a href='{html.escape(ev_url)}' target='_blank' style='font-size:11px;color:var(--accent)'>↗</a>"
+                ) if ev_url else ""
+                results_detail = f"<span style='color:var(--muted);font-size:12px'>{html.escape(results_part)}{link_html}</span>"
             rows.append(
                 "<tr>"
                 f"<td style='color:var(--muted);font-size:11px;white-space:nowrap;padding:8px 10px'>{html.escape(age)}</td>"
-                f"<td style='padding:8px 10px'>{html.escape(ev.title)}</td>"
+                f"<td style='color:var(--muted);font-size:11px;padding:8px 6px;white-space:nowrap'>{html.escape(kind_prefix)}</td>"
+                f"<td style='padding:8px 10px;font-weight:500'>{html.escape(show_title)}</td>"
                 f"<td style='padding:8px 10px'>{results_detail}</td>"
                 f"<td style='padding:8px 14px'><span class='sdot {dot}'></span></td>"
                 "</tr>"
@@ -286,7 +310,8 @@ def _indexer_card(settings: Settings) -> str:
         body = (
             "<table style='width:100%'><thead><tr>"
             "<th style='padding:8px 10px'>Time</th>"
-            "<th style='padding:8px 10px'>Query</th>"
+            "<th style='padding:8px 6px'>Type</th>"
+            "<th style='padding:8px 10px'>Title</th>"
             "<th style='padding:8px 10px'>Results</th>"
             "<th style='padding:8px 14px'></th>"
             "</tr></thead><tbody>" + "".join(rows) + "</tbody></table>"

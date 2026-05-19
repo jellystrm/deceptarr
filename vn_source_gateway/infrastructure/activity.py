@@ -18,6 +18,7 @@ class ActivityEvent:
     status: str = ""   # "ok" | "error" | ""
     ref: str = ""      # job_id for correlation
     results: list = field(default_factory=list)  # release titles for search events
+    url: str = ""      # full torznab query URL for search events
 
 
 class ActivityLog:
@@ -37,10 +38,10 @@ class ActivityLog:
         return cls._instance
 
     def add(self, kind: str, title: str, detail: str = "", status: str = "", ref: str = "",
-            results: list | None = None) -> None:
+            results: list | None = None, url: str = "") -> None:
         event = ActivityEvent(ts=int(time.time()), kind=kind, title=title,
                               detail=detail, status=status, ref=ref,
-                              results=results or [])
+                              results=results or [], url=url)
         with self._mu:
             self._events.append(event)
             if len(self._events) > _MAX:
