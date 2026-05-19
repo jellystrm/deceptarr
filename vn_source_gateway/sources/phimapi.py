@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 from typing import Any
 
 import requests
@@ -15,9 +16,18 @@ from .text import _is_supported_lang, _safe_int, normalize_text
 log = logging.getLogger(__name__)
 
 
-def _keywords(title: str) -> list[str]:
+def _norm(s: str) -> str:
+    """Lowercase + strip diacritics for fuzzy server name matching."""
+    return "".join(
+        c for c in unicodedata.normalize("NFD", s.lower())
+        if unicodedata.category(c) != "Mn"
+    )
+
+
+def _keywords(*titles: str) -> list[str]:
+    """Return deduplicated, language-filtered keyword list for searching."""
     seen: dict[str, None] = {}
-    for t in [title]:
+    for t in titles:
         if t and _is_supported_lang(t):
             seen[t] = None
     return list(seen)
@@ -38,12 +48,28 @@ class PhimApiSource(Source):
         self.tmdb = TmdbClient(tmdb_api_key)
         self.session = requests.Session()
         self.session.headers.update({"Accept": "application/json"})
+        self._last_log: list[str] = []
 
     def resolve_movie(self, movie: MovieWanted) -> SourceHit | None:
+        self._last_log = []
         seen: set[str] = set()
         tmdb_info = TmdbSeriesInfo(series_year=movie.year or 0)
 
-        def _try_slug(slug: str) -> SourceHit | None:
+        # fetch TMDB title + alternative titles for broader keyword coverage
+        _extra_kws: list[str] = []
+        if movie.tmdb_id and self.tmdb.enabled:
+            info = self.tmdb.get_movie_info(movie.tmdb_id)
+            if info:
+                tmdb_info = TmdbSeriesInfo(series_year=info.series_year or movie.year or 0)
+                _extra_kws = [t for t in info.alternative_titles if t]
+
+        _rejected: list[tuple[str, int]] = []   # (name, detail_score)
+        _search_total = 0
+        _entry_passed = 0
+        server_label = movie.server_label
+
+        def _try_slug(slug: str, via: str = "") -> SourceHit | None:
+            nonlocal _entry_passed
             if not slug or slug in seen:
                 return None
             seen.add(slug)
@@ -51,26 +77,55 @@ class PhimApiSource(Source):
             if not detail:
                 return None
             movie_node = detail.get("movie") or {}
-            if score_item(movie_node, movie.title, movie.tmdb_id, movie.year, "movie", None, tmdb_info) < 1000:
+            s = score_item(movie_node, movie.title, movie.tmdb_id, movie.year, "movie", None, tmdb_info)
+            name = movie_node.get("name") or slug
+            _entry_passed += 1
+            if s < 1000:
+                _rejected.append((name, s))
+                log.debug("%s movie '%s' detail score=%d (need 1000)", self.name, name, s)
                 return None
-            return self._first_hls(detail)
+            hit = self._first_hls(detail, server_label)
+            if hit:
+                suffix = f" via {via}" if via else ""
+                self._last_log = [f"matched '{name}' (score {s}){suffix}"]
+            return hit
 
-        for kw in _keywords(movie.title):
-            for item in self._search(kw):
-                if score_item(item, kw, movie.tmdb_id, movie.year, "movie", None, tmdb_info) >= 400:
+        for kw in _keywords(movie.title, *_extra_kws):
+            results = self._search(kw)
+            _search_total += len(results)
+            for item in results:
+                s = score_item(item, kw, movie.tmdb_id, movie.year, "movie", None, tmdb_info)
+                if s >= 400:
                     hit = _try_slug(item.get("slug"))
                     if hit:
                         return hit
 
         if movie.tmdb_id:
             slug = self._slug_by_tmdb("movie", movie.tmdb_id)
-            hit = _try_slug(slug)
+            hit = _try_slug(slug, via="TMDB direct")
             if hit:
                 return hit
+            if slug:
+                self._last_log.append("TMDB direct lookup: detail score too low")
+            else:
+                self._last_log.append("TMDB direct lookup: not found")
+
+        # build failure summary
+        if _rejected:
+            best_name, best_score = max(_rejected, key=lambda x: x[1])
+            self._last_log = [
+                f"{_search_total} results, {len(_rejected)} checked; "
+                f"best '{best_name}' score {best_score} (need 1000)"
+            ]
+        elif _search_total == 0:
+            self._last_log = ["no search results"]
+        elif _entry_passed == 0:
+            self._last_log = [f"{_search_total} results found, all below entry threshold (400)"]
 
         return None
 
     def resolve_episode(self, episode: EpisodeWanted) -> SourceHit | None:
+        self._last_log = []
         tmdb_info = TmdbSeriesInfo(series_year=episode.year or 0)
         if episode.tmdb_id and self.tmdb.enabled:
             tmdb_info = self.tmdb.get_series_info(episode.tmdb_id)
@@ -78,16 +133,37 @@ class PhimApiSource(Source):
                       self.name, episode.series_title, tmdb_info.total_seasons, tmdb_info.total_episodes)
 
         seen: set[str] = set()
+        _rejected: list[tuple[str, int]] = []
+        _search_total = 0
+        _entry_passed = 0
+        server_label = episode.server_label
 
-        def _try_slug(slug: str, assigned_season: int | None = None) -> SourceHit | None:
+        def _try_slug(slug: str, assigned_season: int | None = None, via: str = "") -> SourceHit | None:
+            nonlocal _entry_passed
             if not slug or slug in seen:
                 return None
             seen.add(slug)
-            return self._episode_hls_from_slug(slug, episode.season_number, episode.episode_number, tmdb_info, assigned_season)
+            _entry_passed += 1
+            hit = self._episode_hls_from_slug(slug, episode.season_number, episode.episode_number, tmdb_info, assigned_season, server_label)
+            if hit:
+                suffix = f" via {via}" if via else ""
+                self._last_log = [f"S{episode.season_number:02d}E{episode.episode_number:02d} from '{slug}'{suffix}"]
+            else:
+                _rejected.append((slug, 0))
+                log.debug("%s episode not found in slug '%s'", self.name, slug)
+            return hit
 
-        for kw in _keywords(episode.series_title):
-            for item in self._search(kw):
-                if score_item(item, kw, episode.tmdb_id, episode.year, "tv", episode.season_number, tmdb_info) >= 400:
+        extra_kws: list[str] = []
+        if tmdb_info.title:
+            extra_kws.append(tmdb_info.title)
+        extra_kws += (tmdb_info.alternative_titles or [])
+
+        for kw in _keywords(episode.series_title, *extra_kws):
+            results = self._search(kw)
+            _search_total += len(results)
+            for item in results:
+                s = score_item(item, kw, episode.tmdb_id, episode.year, "tv", episode.season_number, tmdb_info)
+                if s >= 400:
                     s_year = _safe_int(item.get("year"))
                     detected_s = detect_season(item.get("name", ""), item.get("origin_name", ""), s_year, tmdb_info)
                     hit = _try_slug(item.get("slug"), detected_s)
@@ -102,9 +178,25 @@ class PhimApiSource(Source):
                     movie_node = detail.get("movie") or {}
                     s_year = _safe_int(movie_node.get("year"))
                     detected_s = detect_season(movie_node.get("name", ""), movie_node.get("origin_name", ""), s_year, tmdb_info, slug)
-                    hit = _try_slug(slug, detected_s or episode.season_number)
+                    hit = _try_slug(slug, detected_s or episode.season_number, via="TMDB direct")
                     if hit:
                         return hit
+                else:
+                    self._last_log.append("TMDB direct lookup: detail fetch failed")
+            else:
+                self._last_log.append("TMDB direct lookup: not found")
+
+        # failure summary
+        if not self._last_log:
+            if _search_total == 0:
+                self._last_log = ["no search results"]
+            elif _entry_passed == 0:
+                self._last_log = [f"{_search_total} results, all below entry threshold (400)"]
+            else:
+                self._last_log = [
+                    f"{_search_total} results, {_entry_passed} series checked; "
+                    f"episode S{episode.season_number:02d}E{episode.episode_number:02d} not found in any"
+                ]
 
         return None
 
@@ -149,6 +241,21 @@ class PhimApiSource(Source):
             log.debug("%s tmdb direct lookup failed for %s/%s: %s", self.name, media_type, tmdb_id, exc)
         return None
 
+    def _sorted_servers(self, detail: dict[str, Any], server_label: str) -> list[dict[str, Any]]:
+        """Return server list from detail, preferred server first when label given."""
+        servers: list[dict[str, Any]] = (
+            detail.get("episodes")
+            or (detail.get("data") or {}).get("episodes")
+            or []
+        )
+        if not server_label:
+            return servers
+        kw = _norm(server_label)
+        def _rank(s: dict[str, Any]) -> int:
+            name = _norm(s.get("server_name") or "")
+            return 0 if kw in name else 1
+        return sorted(servers, key=_rank)
+
     def _server_data(self, detail: dict[str, Any]) -> list[dict[str, Any]]:
         episodes = detail.get("episodes") or (detail.get("data") or {}).get("episodes") or []
         out: list[dict[str, Any]] = []
@@ -156,12 +263,13 @@ class PhimApiSource(Source):
             out.extend(server.get("server_data") or [])
         return out
 
-    def _first_hls(self, detail: dict[str, Any]) -> SourceHit | None:
+    def _first_hls(self, detail: dict[str, Any], server_label: str = "") -> SourceHit | None:
         headers: dict[str, str] = {"Referer": f"{self.base_url}/"}
-        for item in self._server_data(detail):
-            url = item.get("link_m3u8")
-            if url:
-                return SourceHit(self.name, str(url), headers)
+        for server in self._sorted_servers(detail, server_label):
+            for item in server.get("server_data") or []:
+                url = item.get("link_m3u8")
+                if url:
+                    return SourceHit(self.name, str(url), headers)
         return None
 
     def _episode_hls_from_slug(
@@ -171,6 +279,7 @@ class PhimApiSource(Source):
         episode: int,
         tmdb_info: TmdbSeriesInfo,
         assigned_season: int | None,
+        server_label: str = "",
     ) -> SourceHit | None:
         detail = self._detail(slug)
         if not detail:
@@ -189,7 +298,7 @@ class PhimApiSource(Source):
             current_s = assigned_season
 
         seen_keys: set[tuple[str, int | None, str]] = set()
-        for server in detail.get("episodes") or []:
+        for server in self._sorted_servers(detail, server_label):
             for ep_data in server.get("server_data") or []:
                 url = ep_data.get("link_m3u8")
                 if not url:

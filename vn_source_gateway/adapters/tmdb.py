@@ -72,6 +72,52 @@ class TmdbClient:
 
     # ── Movie metadata ────────────────────────────────────────────────────────
 
+    def get_movie_info(self, tmdb_id: int) -> TmdbSeriesInfo | None:
+        """Return TmdbSeriesInfo (title + alt_titles + year) for a movie. Cached."""
+        cache_key = f"movie_info:{tmdb_id}"
+        with _lock:
+            if cache_key in _cache:
+                return _cache[cache_key]
+        result = self._fetch_movie_info(tmdb_id)
+        with _lock:
+            _cache[cache_key] = result
+        return result
+
+    def _fetch_movie_info(self, tmdb_id: int) -> TmdbSeriesInfo | None:
+        if not self.enabled:
+            return None
+        try:
+            # Try Vietnamese first so tmdb_info.title is the VI title when available
+            data: dict[str, Any] = {}
+            for lang in ("vi-VN", "en-US"):
+                r = self.session.get(f"{_BASE}/movie/{tmdb_id}", params={"language": lang}, timeout=10)
+                if r.status_code == 200:
+                    data = r.json()
+                    if data.get("id"):
+                        break
+            if not data.get("id"):
+                return None
+            raw_date = data.get("release_date") or ""
+            year = int(raw_date[:4]) if raw_date[:4].isdigit() else 0
+            main_title = data.get("title") or data.get("original_title")
+            orig_title = data.get("original_title")
+            alt_titles: list[str] = []
+            try:
+                ar = self.session.get(f"{_BASE}/movie/{tmdb_id}/alternative_titles", timeout=10)
+                if ar.status_code == 200:
+                    alt_titles = [t.get("title") for t in ar.json().get("titles", []) if t.get("title")]
+            except Exception:
+                pass
+            if main_title:
+                alt_titles.append(main_title)
+            if orig_title:
+                alt_titles.append(orig_title)
+            alt_titles = list(dict.fromkeys(alt_titles))
+            return TmdbSeriesInfo(series_year=year, title=main_title, alternative_titles=alt_titles)
+        except Exception as exc:
+            log.debug("TMDB movie info failed for %s: %s", tmdb_id, exc)
+            return None
+
     def get_movie_title(self, tmdb_id: int) -> tuple[str, int] | None:
         """Return (title, year) for a movie, or None on failure. Cached."""
         cache_key = f"movie_title:{tmdb_id}"
@@ -174,6 +220,34 @@ class TmdbClient:
         except Exception as exc:
             log.debug("TMDB series info failed for %s: %s", tmdb_id, exc)
             return TmdbSeriesInfo()
+
+    def get_season_episodes(self, tmdb_id: int, season: int) -> list[int]:
+        """Return ordered list of episode numbers for a season. Cached."""
+        cache_key = f"season_eps:{tmdb_id}:{season}"
+        with _lock:
+            if cache_key in _cache:
+                return _cache[cache_key]
+        result = self._fetch_season_episodes(tmdb_id, season)
+        with _lock:
+            _cache[cache_key] = result
+        return result
+
+    def _fetch_season_episodes(self, tmdb_id: int, season: int) -> list[int]:
+        if not self.enabled:
+            return []
+        try:
+            r = self.session.get(f"{_BASE}/tv/{tmdb_id}/season/{season}", timeout=10)
+            if r.status_code != 200:
+                return []
+            data = r.json()
+            return sorted(
+                ep["episode_number"]
+                for ep in data.get("episodes", [])
+                if ep.get("episode_number")
+            )
+        except Exception as exc:
+            log.debug("TMDB season episodes failed for %s/s%s: %s", tmdb_id, season, exc)
+            return []
 
     # ── Internal ─────────────────────────────────────────────────────────────
 

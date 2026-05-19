@@ -8,6 +8,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from vn_source_gateway.application.grab_service import enqueue_from_url
+from vn_source_gateway.infrastructure.activity import ActivityLog
 from vn_source_gateway.infrastructure.config import Settings, save_settings
 from vn_source_gateway.interfaces.download_clients import qbittorrent
 from vn_source_gateway.interfaces.indexers.torznab import caps_response, search_response
@@ -182,6 +183,17 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
                 self.send_error(HTTPStatus.BAD_REQUEST, "No supported urls field")
                 return
             log.info("Download client add accepted: category=%s paused=%s jobs=%s", category, paused, ",".join(added))
+            for job_id in added:
+                from vn_source_gateway.infrastructure.jobs import JobStore
+                job = JobStore(settings.state_path).get(job_id)
+                if job:
+                    ActivityLog.get().add(
+                        kind="grab",
+                        title=job.release.title,
+                        detail=f"source={job.release.source_name or 'auto'}  mode={job.release.output_mode}",
+                        status="ok",
+                        ref=job_id,
+                    )
             self._send_text("Ok.\n")
 
         def _read_form(self) -> dict[str, str]:

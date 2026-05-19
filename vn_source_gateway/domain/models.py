@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Literal
 
 
@@ -11,6 +11,7 @@ class MovieWanted:
     year: int | None
     tmdb_id: int | None
     imdb_id: str | None
+    server_label: str = ""
 
     @property
     def key(self) -> str:
@@ -29,6 +30,7 @@ class EpisodeWanted:
     imdb_id: str | None
     season_number: int
     episode_number: int
+    server_label: str = ""
 
     @property
     def key(self) -> str:
@@ -59,6 +61,7 @@ class GatewayRelease:
     tvdb_id: int | None = None
     season_number: int | None = None
     episode_number: int | None = None
+    server_label: str = ""
 
 
 @dataclass(frozen=True)
@@ -74,3 +77,4 @@ class GatewayJob:
     save_path: str | None = None
     hls_url: str | None = None
     error: str | None = None
+    search_log: list[str] = field(default_factory=list)
