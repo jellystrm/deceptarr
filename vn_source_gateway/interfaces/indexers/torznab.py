@@ -5,6 +5,7 @@ from email.utils import formatdate
 from html import escape as xml_escape
 
 from vn_source_gateway.adapters.tmdb import TmdbClient
+from vn_source_gateway.adapters.tvmaze import TVMazeClient
 from vn_source_gateway.application.grab_service import encode_release
 from vn_source_gateway.domain.models import GatewayRelease, OutputMode
 from vn_source_gateway.infrastructure.activity import ActivityLog
@@ -254,7 +255,27 @@ def _fetch_season_episode_numbers(
     tvdb_id: int | None,
     season: int,
 ) -> list[int]:
-    """Return ordered episode numbers for a season via TMDB. Empty list → caller keeps season-pack behaviour."""
+    """Return ordered episode numbers for a season.
+
+    Strategy:
+    - When ``tvdb_id`` is provided, use TVMaze (free, mirrors TVDB numbering)
+      because Sonarr sends TVDB season/episode numbers and TMDB seasons can
+      differ (e.g. TVDB Season 1 = 24 eps vs TMDB Season 1 + Season 2 = 12 ea).
+    - Fall back to TMDB when only ``tmdb_id`` is available (Radarr path, or
+      Sonarr configured to use TMDB series IDs).
+    - Empty list → caller keeps season-pack behaviour (no per-episode expansion).
+    """
+    # ── TVDB-aligned path: prefer TVMaze ──────────────────────────────────────
+    if tvdb_id is not None:
+        try:
+            eps = TVMazeClient().get_season_episodes(tvdb_id, season)
+            if eps:
+                return eps
+        except Exception:
+            pass
+        # TVMaze miss → fall through to TMDB if we can resolve the TMDB ID
+
+    # ── TMDB path ─────────────────────────────────────────────────────────────
     if not settings.tmdb_api_key:
         return []
     tmdb = TmdbClient(settings.tmdb_api_key)
