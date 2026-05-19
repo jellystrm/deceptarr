@@ -20,11 +20,11 @@ def parse_multipart(body: bytes, content_type: str) -> dict[str, str]:
     delimiter = ("--" + boundary).encode("utf-8")
     form: dict[str, str] = {}
     for part in body.split(delimiter):
-        part = part.strip()
-        if not part or part == b"--":
+        part = part.lstrip(b"\r\n")
+        if not part or part.rstrip(b"\r\n-") == b"":
             continue
-        headers_raw, _, value = part.partition(b"\r\n\r\n")
-        if not value:
+        headers_raw, sep, value = part.partition(b"\r\n\r\n")
+        if not sep:
             continue
         headers = headers_raw.decode("utf-8", errors="ignore")
         name = None
@@ -35,7 +35,7 @@ def parse_multipart(body: bytes, content_type: str) -> dict[str, str]:
                     if segment.startswith("name="):
                         name = segment.split("=", 1)[1].strip('"')
         if name:
-            form[name] = value.rstrip(b"\r\n-").decode("utf-8", errors="ignore")
+            form[name] = value.rstrip(b"\r\n").decode("utf-8", errors="ignore")
     return form
 
 

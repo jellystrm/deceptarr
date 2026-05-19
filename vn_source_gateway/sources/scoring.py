@@ -102,9 +102,11 @@ def score_item(
             return -5000
 
     # 5. Identity leakage (sequel/spinoff detection)
+    # ignore_season only for TV — for movies "2" in title IS a meaningful sequel token
+    ignore_s = (found_s or 0) if media_type == "tv" else 0
     if not tmdb_matched:
-        if _identity_leakage(item.get("name", ""), query, ignore_year=s_year, ignore_season=found_s or 0) and \
-           _identity_leakage(item.get("origin_name", ""), query, ignore_year=s_year, ignore_season=found_s or 0):
+        if _identity_leakage(item.get("name", ""), query, ignore_year=s_year, ignore_season=ignore_s) and \
+           _identity_leakage(item.get("origin_name", ""), query, ignore_year=s_year, ignore_season=ignore_s):
             return -4800
 
     # 6. Title similarity

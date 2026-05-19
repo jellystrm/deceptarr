@@ -25,7 +25,7 @@ def normalize_text(text: str) -> str:
     t = text.lower().replace("đ", "d").replace("Đ", "D")
     nfkd = unicodedata.normalize("NFKD", t)
     ascii_str = nfkd.encode("ascii", "ignore").decode("ascii")
-    return re.sub(r"[^a-z0-9\s]+", " ", ascii_str).strip()
+    return re.sub(r"\s+", " ", re.sub(r"[^a-z0-9\s]+", " ", ascii_str)).strip()
 
 
 def _tokens(text: str) -> set[str]:
