@@ -299,11 +299,23 @@ class PhimApiSource(Source):
         if current_s is None:
             current_s = assigned_season
 
-        # Fetch TVMaze series info once (cached) for TVDB-aligned abs-ep mapping.
+        # ── TVMaze: fetch series info once (cached) ───────────────────────────
+        # Used for two purposes:
+        # 1. abs-ep → season mapping (PhimAPI absolute → TVDB season)
+        # 2. TVDB (season, ep) → abs-ep  (the reverse, for flat-list shows like
+        #    One Piece where PhimAPI stores "Tập 13" but Sonarr sends S2000E05)
         _tvmaze_info = None
+        _expected_abs: int | None = None   # TVDB S{season}E{episode} → absolute
         if tvdb_id is not None:
             try:
                 _tvmaze_info = TVMazeClient().get_series_info(tvdb_id)
+                if _tvmaze_info and _tvmaze_info.seasons:
+                    prev_total = 0
+                    for tvs in _tvmaze_info.seasons:
+                        if tvs.season_number == season:
+                            _expected_abs = prev_total + episode
+                            break
+                        prev_total = _tvmaze_info.cumulative.get(tvs.season_number, prev_total)
             except Exception:
                 pass
 
@@ -331,10 +343,9 @@ class PhimApiSource(Source):
                     ep_m = re.search(r"(\d+)", clean)
                 num = int(ep_m.group(1)) if ep_m else 1
 
-                # Absolute-episode → season mapping.
-                # Prefer TVMaze (TVDB-aligned) when tvdb_id is available;
-                # fall back to TMDB seasons otherwise.
-                # _tvmaze_info is fetched once per slug call (see below).
+                # ── abs-ep → season mapping ───────────────────────────────────
+                # When PhimAPI uses absolute numbering and the slug has no season
+                # info in its title, infer which TVDB season this episode belongs to.
                 if _tvmaze_info is not None and _tvmaze_info.seasons:
                     _tvmaze_mapped: int | None = None
                     total = 0
@@ -362,7 +373,14 @@ class PhimApiSource(Source):
 
                 if rs is not None and rs != season:
                     continue
-                if num != episode:
+
+                # ── episode number match ──────────────────────────────────────
+                # Try two candidates:
+                # 1. num == episode          — PhimAPI restarts ep count each season
+                # 2. num == _expected_abs    — PhimAPI uses absolute ep numbering
+                #    e.g. One Piece TVDB S2000E05 = absolute ep 13
+                #         PhimAPI stores "Tập 13" → num=13, _expected_abs=13 ✓
+                if num != episode and (_expected_abs is None or num != _expected_abs):
                     continue
 
                 key = (url, rs, ename)

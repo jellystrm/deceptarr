@@ -91,6 +91,33 @@ class TVMazeClient:
                 return s.season_number
         return None
 
+    def tvdb_ep_to_abs(self, tvdb_id: int, season: int, episode: int) -> int | None:
+        """Convert a TVDB (season, episode) pair to an absolute episode number.
+
+        Absolute numbering counts episodes sequentially across all seasons,
+        matching how many Vietnamese streaming sites (PhimAPI/KKPhim/OPhim)
+        store long-running shows like One Piece.
+
+        Works for both regular seasons (1, 2, 3…) and year-based seasons
+        (1999, 2000, 2001…) as used by TVDB for some anime.
+
+        Returns None when the show or season is not found.
+        """
+        info = self.get_series_info(tvdb_id)
+        if not info.seasons:
+            return None
+        # Sum of episode counts for all seasons strictly before the target season
+        prev_total = 0
+        season_found = False
+        for s in info.seasons:
+            if s.season_number == season:
+                season_found = True
+                break
+            prev_total = info.cumulative.get(s.season_number, prev_total)
+        if not season_found:
+            return None
+        return prev_total + episode
+
     # ── Internal ─────────────────────────────────────────────────────────────
 
     def _get_show_id(self, tvdb_id: int) -> int | None:
