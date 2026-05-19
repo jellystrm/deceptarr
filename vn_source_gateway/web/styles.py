@@ -197,6 +197,11 @@ tr:last-child td { border-bottom: none; }
 .badge.running { background: rgba(76,175,130,0.15); color: var(--green); }
 .badge.error { background: rgba(224,108,117,0.15); color: #e06c75; }
 .badge.completed { background: rgba(245,166,35,0.12); color: var(--accent); }
+.pbar { position: relative; width: 130px; height: 16px; background: rgba(255,255,255,0.06); border-radius: 8px; overflow: hidden; }
+.pbar-fill { position: absolute; left: 0; top: 0; height: 100%; background: var(--green); transition: width 0.4s ease; }
+.pbar-fill.done { background: var(--accent); }
+.pbar-fill.fail { background: #e06c75; }
+.pbar-txt { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: var(--text); }
 /* Responsive */
 @media (max-width: 768px) {
   .sidebar { display: none; }

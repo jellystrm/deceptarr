@@ -91,6 +91,7 @@ def render_page(settings: Settings, message: str, section: str, settings_tab: st
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+  {'<meta http-equiv="refresh" content="5">' if section == "dashboard" else ""}
   <title>vn-source-gateway</title>
   <style>{CSS}</style>
 </head>
@@ -171,25 +172,40 @@ def _tasks_html(settings: Settings) -> str:
     rows = []
     for job in sorted(jobs, key=lambda item: item.get("added_on", 0), reverse=True)[:25]:
         state = str(job.get("state", ""))
-        badge_cls = "running" if state in {"uploading", "downloading"} else (
-            "error" if "error" in state.lower() else (
-                "completed" if state == "pausedUP" else ""
-            )
-        )
+        if state in {"uploading", "pausedUP"}:
+            badge_cls, label, bar_cls = "completed", "completed", "done"
+        elif "error" in state.lower():
+            badge_cls, label, bar_cls = "error", "failed", "fail"
+        elif state == "downloading":
+            badge_cls, label, bar_cls = "running", "downloading", ""
+        elif state == "pausedDL":
+            badge_cls, label, bar_cls = "", "paused", ""
+        else:
+            badge_cls, label, bar_cls = "", "queued", ""
         progress = int(float(job.get("progress", 0)) * 100)
         task_hash = _attr(job.get("hash", ""))
+
+        # Context-aware actions
+        buttons = ""
+        if state == "error":
+            buttons += "<button type='submit' name='action' value='resume' class='btn btn-ghost btn-small'>Retry</button>"
+        elif state in {"downloading", "queuedDL"}:
+            buttons += "<button type='submit' name='action' value='pause' class='btn btn-ghost btn-small'>Pause</button>"
+        elif state == "pausedDL":
+            buttons += "<button type='submit' name='action' value='resume' class='btn btn-ghost btn-small'>Resume</button>"
+        buttons += "<button type='submit' name='action' value='delete' class='btn btn-danger btn-small'>Delete</button>"
+
         rows.append(
             "<tr>"
             f"<td>{html.escape(str(job.get('name', '')))}</td>"
-            f"<td><span class='badge {badge_cls}'>{html.escape(state)}</span></td>"
-            f"<td>{progress}%</td>"
-            f"<td style='color:var(--muted)'>{html.escape(str(job.get('save_path', '')))}</td>"
+            f"<td><span class='badge {badge_cls}'>{label}</span></td>"
+            f"<td><div class='pbar'><span class='pbar-fill {bar_cls}' style='width:{progress}%'></span>"
+            f"<span class='pbar-txt'>{progress}%</span></div></td>"
+            f"<td style='color:var(--muted)'>{html.escape(str(job.get('save_path', '')) or '—')}</td>"
             "<td>"
             f"<form method='post' action='/tasks/action' class='task-actions'>"
             f"<input type='hidden' name='hashes' value='{task_hash}'>"
-            "<button type='submit' name='action' value='resume' class='btn btn-ghost btn-small'>Resume</button>"
-            "<button type='submit' name='action' value='pause' class='btn btn-ghost btn-small'>Pause</button>"
-            "<button type='submit' name='action' value='delete' class='btn btn-danger btn-small'>Delete</button>"
+            f"{buttons}"
             "</form>"
             "</td>"
             "</tr>"
