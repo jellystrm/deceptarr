@@ -79,6 +79,7 @@ class Settings:
     max_items_per_poll: int = 20
     retry_after_seconds: int = 86400
     run_once: bool = False
+    worker_enabled: bool = True
     movie_enabled: bool = True
     series_enabled: bool = True
     source_order: list[str] = field(default_factory=lambda: ["kkphim", "ophim"])
@@ -98,6 +99,9 @@ class Settings:
     ffmpeg_extra_args: list[str] = field(default_factory=list)
     log_level: str = "INFO"
     hls_template_sources: list[dict[str, Any]] = field(default_factory=list)
+    job_detail_retention_hours: int = 24
+    server_labels: list[str] = field(default_factory=lambda: ["ViệtSub", "Lồng Tiếng"])
+    torznab_group_sources: bool = False
 
     @staticmethod
     def load() -> "Settings":
@@ -136,6 +140,7 @@ class Settings:
             max_items_per_poll=_int_value(file_data, "max_items_per_poll", "MAX_ITEMS_PER_POLL", 20),
             retry_after_seconds=_int_value(file_data, "retry_after_seconds", "RETRY_AFTER_SECONDS", 86400),
             run_once=_bool_value(file_data, "run_once", "RUN_ONCE", False),
+            worker_enabled=_bool_value(file_data, "worker_enabled", "WORKER_ENABLED", True),
             movie_enabled=_bool_value(file_data, "movie_enabled", "MOVIE_ENABLED", True),
             series_enabled=_bool_value(file_data, "series_enabled", "SERIES_ENABLED", True),
             source_order=_list_value(file_data, "source_order", "SOURCE_ORDER", ["kkphim", "ophim"]),
@@ -155,6 +160,9 @@ class Settings:
             ffmpeg_extra_args=_list_value(file_data, "ffmpeg_extra_args", "FFMPEG_EXTRA_ARGS", []),
             log_level=str(_value(file_data, "log_level", "LOG_LEVEL", "INFO")),
             hls_template_sources=templates,
+            job_detail_retention_hours=_int_value(file_data, "job_detail_retention_hours", "JOB_DETAIL_RETENTION_HOURS", 24),
+            server_labels=_list_value(file_data, "server_labels", "SERVER_LABELS", ["ViệtSub", "Lồng Tiếng"]),
+            torznab_group_sources=_bool_value(file_data, "torznab_group_sources", "TORZNAB_GROUP_SOURCES", False),
         )
 
     def to_config_dict(self) -> dict[str, Any]:
@@ -173,6 +181,7 @@ class Settings:
             "poll_interval_seconds": self.poll_interval_seconds,
             "max_items_per_poll": self.max_items_per_poll,
             "retry_after_seconds": self.retry_after_seconds,
+            "worker_enabled": self.worker_enabled,
             "movie_enabled": self.movie_enabled,
             "series_enabled": self.series_enabled,
             "source_order": self.source_order,
@@ -192,6 +201,9 @@ class Settings:
             "ffmpeg_extra_args": self.ffmpeg_extra_args,
             "log_level": self.log_level,
             "hls_template_sources": self.hls_template_sources,
+            "job_detail_retention_hours": self.job_detail_retention_hours,
+            "server_labels": self.server_labels,
+            "torznab_group_sources": self.torznab_group_sources,
         }
 
 

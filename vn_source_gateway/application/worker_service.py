@@ -8,6 +8,7 @@ from collections.abc import Callable
 from dataclasses import replace
 
 from vn_source_gateway.adapters.media_managers import RadarrClient, SonarrClient
+from vn_source_gateway.application.output_service import OutputService
 from vn_source_gateway.domain.models import EpisodeWanted, GatewayJob, GatewayRelease, MovieWanted, SourceHit
 from vn_source_gateway.infrastructure.config import Settings
 from vn_source_gateway.infrastructure.downloader import HlsDownloader
@@ -57,6 +58,9 @@ class Worker:
         )
 
     def run_once(self) -> None:
+        if not self.settings.worker_enabled:
+            log.debug("Worker polling disabled (worker_enabled=false)")
+            return
         if self.settings.movie_enabled and self.radarr.enabled:
             self._process_movies()
         if self.settings.series_enabled and self.sonarr.enabled:
@@ -65,13 +69,14 @@ class Worker:
     def _process_movies(self) -> None:
         movies = self.radarr.missing_movies(self.settings.max_items_per_poll)
         log.info("Radarr missing movies: %d", len(movies))
+        output = OutputService(self.settings)
         for movie in movies:
-            path = self.downloader.movie_path(movie)
+            mode = self.settings.default_output_mode
             job_id = movie.key
             release = GatewayRelease(
                 title=movie.title,
                 kind="movie",
-                output_mode="download",
+                output_mode=mode,  # type: ignore[arg-type]
                 source_name=None,
                 query=movie.title,
                 year=movie.year,
@@ -80,23 +85,23 @@ class Worker:
             )
             now = int(time.time())
             existing = self.jobs.get(job_id)
-            if existing and existing.status in {"completed"}:
-                log.info("Job already completed, skipping: %s", job_id)
-                continue
-            self.jobs.upsert(GatewayJob(
+            job = GatewayJob(
                 job_id=job_id,
                 release=release,
-                status="queued",
-                progress=0.0,
+                status=existing.status if existing else "queued",
+                progress=existing.progress if existing else 0.0,
                 created_at=existing.created_at if existing else now,
                 updated_at=now,
                 category="vn-source",
-            ))
+            )
+            self.jobs.upsert(job)
+            path = output.strm_path(job) if mode == "strm" else self.downloader.movie_path(movie)
             self._process_item(
                 key=job_id,
                 label=f"movie {movie.title}",
                 path=path,
-                release=release,
+                job=job,
+                output=output,
                 resolver=lambda source, item=movie: source.resolve_movie(item),
                 importer=lambda import_path: self.radarr.import_path(import_path, self.settings.import_mode),
             )
@@ -104,13 +109,14 @@ class Worker:
     def _process_episodes(self) -> None:
         episodes = self.sonarr.missing_episodes(self.settings.max_items_per_poll)
         log.info("Sonarr missing episodes: %d", len(episodes))
+        output = OutputService(self.settings)
         for episode in episodes:
-            path = self.downloader.episode_path(episode)
+            mode = self.settings.default_output_mode
             job_id = episode.key
             release = GatewayRelease(
                 title=episode.series_title,
                 kind="episode",
-                output_mode="download",
+                output_mode=mode,  # type: ignore[arg-type]
                 source_name=None,
                 query=episode.series_title,
                 year=episode.year,
@@ -122,18 +128,17 @@ class Worker:
             )
             now = int(time.time())
             existing = self.jobs.get(job_id)
-            if existing and existing.status in {"completed"}:
-                log.info("Job already completed, skipping: %s", job_id)
-                continue
-            self.jobs.upsert(GatewayJob(
+            job = GatewayJob(
                 job_id=job_id,
                 release=release,
-                status="queued",
-                progress=0.0,
+                status=existing.status if existing else "queued",
+                progress=existing.progress if existing else 0.0,
                 created_at=existing.created_at if existing else now,
                 updated_at=now,
                 category="vn-source",
-            ))
+            )
+            self.jobs.upsert(job)
+            path = output.strm_path(job) if mode == "strm" else self.downloader.episode_path(episode)
             self._process_item(
                 key=job_id,
                 label=(
@@ -141,7 +146,8 @@ class Worker:
                     f"S{episode.season_number:02d}E{episode.episode_number:02d}"
                 ),
                 path=path,
-                release=release,
+                job=job,
+                output=output,
                 resolver=lambda source, item=episode: source.resolve_episode(item),
                 importer=lambda import_path: self.sonarr.import_path(import_path, self.settings.import_mode),
             )
@@ -151,15 +157,18 @@ class Worker:
         key: str,
         label: str,
         path: str,
-        release: GatewayRelease,
+        job: GatewayJob,
+        output: OutputService,
         resolver: Callable[[Source], SourceHit | None],
         importer: Callable[[str], None],
     ) -> None:
         if os.path.exists(path):
-            log.info("Already downloaded, asking import again: %s", path)
+            log.info("Already exists, re-importing: %s", path)
             self.jobs.update(key, status="completed", progress=1.0, save_path=path, error=None)
             importer(path)
             return
+        # File gone (Radarr refresh / manual delete) → clear cooldown so we re-fetch
+        self.state.clear_attempt(key)
         if self.state.recently_attempted(key, self.settings.retry_after_seconds):
             log.info("Skipping recent attempt: %s", label)
             self.jobs.update(key, status="queued", error="Skipped: recently attempted")
@@ -174,14 +183,20 @@ class Worker:
                 return
 
             self.jobs.update(key, progress=0.35, hls_url=hit.hls_url)
-            self.downloader.download(hit, path)
-            self.state.mark_attempt(key, path, hit.source_name)
-            self.jobs.update(key, status="completed", progress=1.0, save_path=path, hls_url=hit.hls_url, error=None)
-            importer(path)
+            mode = job.release.output_mode
+            if mode == "strm":
+                completed = output.write_strm(job, hit)
+                out_path = completed.save_path or path
+            else:
+                output.download_hls(job, hit)
+                out_path = path
+            self.state.mark_attempt(key, out_path, hit.source_name)
+            self.jobs.update(key, status="completed", progress=1.0, save_path=out_path, hls_url=hit.hls_url, error=None)
+            importer(out_path)
         except Exception as exc:
-            log.error("Download or import failed for %s: %s", label, exc)
+            log.error("Processing failed for %s: %s", label, exc)
             self.jobs.update(key, status="error", progress=0.0, error=str(exc))
-            raise
+            # Do NOT re-raise — let the worker continue with remaining items
 
     def _resolve(self, label: str, resolver: Callable[[Source], SourceHit | None]) -> SourceHit | None:
         for source_name in self.settings.source_order:

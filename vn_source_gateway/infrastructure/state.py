@@ -34,6 +34,11 @@ class StateStore:
             return False
         return int(time.time()) - int(attempt.get("attempted_at", 0)) < retry_after_seconds
 
+    def clear_attempt(self, key: str) -> None:
+        if key in self._data["attempts"]:
+            del self._data["attempts"][key]
+            self.save()
+
     def mark_attempt(self, key: str, path: str, source: str) -> None:
         self._data["attempts"][key] = {
             "path": path,

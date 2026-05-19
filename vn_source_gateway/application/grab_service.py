@@ -11,6 +11,7 @@ from dataclasses import asdict, replace
 from vn_source_gateway.adapters.tmdb import TmdbClient
 from vn_source_gateway.application.output_service import OutputService
 from vn_source_gateway.domain.models import EpisodeWanted, GatewayJob, GatewayRelease, MovieWanted, SourceHit
+from vn_source_gateway.infrastructure.activity import ActivityLog
 from vn_source_gateway.infrastructure.config import Settings
 from vn_source_gateway.infrastructure.jobs import JobStore
 from vn_source_gateway.sources import Source, build_sources
@@ -48,34 +49,44 @@ def process_job(settings: Settings, job_id: str) -> None:
     if job is None or job.paused:
         return
     store.update(job_id, status="running", progress=0.05, error=None)
+    title = job.release.title
     try:
-        hit = resolve_release(settings, job.release)
+        hit, search_log = resolve_release(settings, job.release)
         if hit is None:
+            store.update(job_id, search_log=search_log)
             raise RuntimeError("No HLS source found")
-        running = store.update(job_id, progress=0.35, hls_url=hit.hls_url)
+        running = store.update(job_id, progress=0.35, hls_url=hit.hls_url, search_log=search_log)
+        ActivityLog.get().add("job", title, f"Resolved via {hit.source_name}", "ok", ref=job_id)
         output = OutputService(settings)
         completed = output.write_strm(running, hit) if job.release.output_mode == "strm" else output.download_hls(running, hit)
         store.upsert(replace(completed, updated_at=int(time.time())))
+        ActivityLog.get().add("job", title, f"Done — {completed.save_path or ''}", "ok", ref=job_id)
     except Exception as exc:
         log.exception("Job failed: %s", job_id)
         store.update(job_id, status="error", progress=0.0, error=str(exc))
+        ActivityLog.get().add("job", title, str(exc), "error", ref=job_id)
 
 
-def resolve_release(settings: Settings, release: GatewayRelease) -> SourceHit | None:
+def resolve_release(settings: Settings, release: GatewayRelease) -> tuple[SourceHit | None, list[str]]:
     release = _enrich_with_tmdb(settings, release)
     sources = build_sources(settings.hls_template_sources, tmdb_api_key=settings.tmdb_api_key)
     ordered = [release.source_name] if release.source_name else settings.source_order
+    all_log: list[str] = []
     for source_name in ordered:
         if not source_name:
             continue
         source = sources.get(source_name)
         if not source:
             log.warning("Unknown or unconfigured source: %s", source_name)
+            all_log.append(f"[{source_name}] not configured")
             continue
         hit = _resolve_with_source(source, release)
+        src_log = getattr(source, "_last_log", [])
+        for line in src_log:
+            all_log.append(f"[{source_name}] {line}")
         if hit:
-            return hit
-    return None
+            return hit, all_log
+    return None, all_log
 
 
 def _enrich_with_tmdb(settings: Settings, release: GatewayRelease) -> GatewayRelease:
@@ -135,7 +146,10 @@ def encode_release(release: GatewayRelease) -> str:
 def decode_release(token: str) -> GatewayRelease:
     padded = token + "=" * (-len(token) % 4)
     raw = base64.urlsafe_b64decode(padded.encode("ascii"))
-    return GatewayRelease(**json.loads(raw.decode("utf-8")))
+    data = json.loads(raw.decode("utf-8"))
+    # Backward compat: tokens encoded before server_label was added
+    data.setdefault("server_label", "")
+    return GatewayRelease(**data)
 
 
 def decode_release_from_url(url: str) -> GatewayRelease:
@@ -155,8 +169,12 @@ def _resolve_with_source(source: Source, release: GatewayRelease) -> SourceHit |
                 year=release.year,
                 tmdb_id=release.tmdb_id,
                 imdb_id=release.imdb_id,
+                server_label=release.server_label,
             )
         )
+    # Season pack (episode_number=None): not supported as a single grab — skip
+    if release.episode_number is None:
+        return None
     return source.resolve_episode(
         EpisodeWanted(
             sonarr_episode_id=0,
@@ -168,6 +186,7 @@ def _resolve_with_source(source: Source, release: GatewayRelease) -> SourceHit |
             tvdb_id=release.tvdb_id,
             imdb_id=release.imdb_id,
             season_number=release.season_number or 1,
-            episode_number=release.episode_number or 1,
+            episode_number=release.episode_number,
+            server_label=release.server_label,
         )
     )

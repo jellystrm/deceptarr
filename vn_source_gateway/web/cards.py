@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import html
 import json
+import time
 from typing import Any
+
+from vn_source_gateway.infrastructure.activity import ActivityLog
 
 
 def _attr(value: object) -> str:
@@ -81,11 +84,14 @@ def worker_card(config: dict[str, Any]) -> str:
             <input name="max_items_per_poll" type="number" min="1" value="{_attr(config["max_items_per_poll"])}"></div>
           <div class="field"><label class="field-label">Retry After (seconds)</label>
             <input name="retry_after_seconds" type="number" min="0" value="{_attr(config["retry_after_seconds"])}"></div>
+          <div class="field"><label class="field-label">Job Detail Retention (hours)</label>
+            <input name="job_detail_retention_hours" type="number" min="1" value="{_attr(config["job_detail_retention_hours"])}"></div>
           <div class="field"><label class="field-label">State Path</label>
             <input name="state_path" value="{_attr(config["state_path"])}"></div>
         </div>
         <hr class="sep">
         <div class="checks">
+          <label class="check-item"><input type="checkbox" name="worker_enabled" {_checked(config["worker_enabled"])}> Worker Enabled</label>
           <label class="check-item"><input type="checkbox" name="ui_enabled" {_checked(config["ui_enabled"])}> UI Enabled</label>
         </div>
       </div>
@@ -179,6 +185,7 @@ def output_card(config: dict[str, Any], ffmpeg_args: str) -> str:
 
 def indexer_card(config: dict[str, Any]) -> str:
     torznab_url = config["public_base_url"] + "/torznab/api"
+    server_labels_val = ", ".join(config.get("server_labels") or [])
     return f"""
     <div class="card" id="indexer">
       <div class="card-header">
@@ -192,6 +199,18 @@ def indexer_card(config: dict[str, Any]) -> str:
             <input name="torznab_api_key" value="{_attr(config["torznab_api_key"])}"></div>
           <div class="field"><label class="field-label">Public Base URL</label>
             <input name="public_base_url" value="{_attr(config["public_base_url"])}"></div>
+        </div>
+        <hr class="sep">
+        <div class="row">
+          <div class="field">
+            <label class="field-label">Server Labels (comma-separated)</label>
+            <input name="server_labels" value="{_attr(server_labels_val)}" placeholder="ViệtSub, Lồng Tiếng, Thuyết Minh">
+            <span style="font-size:11px;color:var(--muted)">Labels generate separate release entries so Radarr/Sonarr can select ViệtSub vs Lồng Tiếng. Leave empty for a single undifferentiated release.</span>
+          </div>
+        </div>
+        <hr class="sep">
+        <div class="checks">
+          <label class="check-item"><input type="checkbox" name="torznab_group_sources" {_checked(config.get("torznab_group_sources", False))}> Group sources — one result per episode (auto-selects best source at grab time)</label>
         </div>
       </div>
     </div>"""
@@ -248,9 +267,51 @@ def jellyfin_card(config: dict[str, Any]) -> str:
     </div>"""
 
 
+def activity_log_card() -> str:
+    events = ActivityLog.get().recent(30)
+    if not events:
+        body = "<p style='color:var(--muted);font-size:13px'>No activity yet.</p>"
+    else:
+        KIND_ICON = {"search": "&#128269;", "grab": "&#128229;", "job": "&#9881;"}
+        KIND_LABEL = {"search": "Search", "grab": "Grab", "job": "Job"}
+        rows = []
+        now = int(time.time())
+        for ev in events:
+            age = now - ev.ts
+            if age < 60:
+                age_str = f"{age}s ago"
+            elif age < 3600:
+                age_str = f"{age // 60}m ago"
+            else:
+                age_str = f"{age // 3600}h ago"
+            icon = KIND_ICON.get(ev.kind, "•")
+            label = KIND_LABEL.get(ev.kind, ev.kind)
+            status_cls = {"ok": "running", "error": "error"}.get(ev.status, "")
+            rows.append(
+                f"<tr>"
+                f"<td style='color:var(--muted);white-space:nowrap'>{age_str}</td>"
+                f"<td><span class='badge {status_cls}'>{icon} {label}</span></td>"
+                f"<td>{html.escape(ev.title)}</td>"
+                f"<td style='color:var(--muted)'>{html.escape(ev.detail)}</td>"
+                f"</tr>"
+            )
+        body = (
+            "<table><thead><tr><th>When</th><th>Type</th><th>Title</th><th>Detail</th></tr></thead>"
+            "<tbody>" + "".join(rows) + "</tbody></table>"
+        )
+    return f"""
+  <div class="card" id="activity-log">
+    <div class="card-header">
+      <div><div class="card-title">Activity Log</div>
+      <div class="card-desc">Indexer searches, grabs, and job results — live pipeline view</div></div>
+    </div>
+    <div class="card-body">{body}</div>
+  </div>"""
+
+
 def download_tasks_card(tasks_html: str) -> str:
     return f"""
-  <div class="card" id="download-tasks" style="margin-top:14px">
+  <div class="card" id="download-tasks">
     <div class="card-header">
       <div><div class="card-title">Download Tasks</div><div class="card-desc">Queued, running, paused, completed, and failed gateway tasks</div></div>
     </div>
