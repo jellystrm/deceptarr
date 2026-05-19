@@ -104,7 +104,14 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
                     qbittorrent.pause(settings, hashes, True)
                 elif action == "delete":
                     qbittorrent.delete(settings, hashes)
-                self._redirect("/dashboard")
+                # AJAX fetch (no Accept: text/html) → plain 200 so the browser
+                # doesn't follow a redirect; the JS caller will refresh #pipeline.
+                # Regular form POST (browser navigation) → redirect as before.
+                accept = self.headers.get("Accept", "")
+                if "text/html" in accept:
+                    self._redirect("/dashboard")
+                else:
+                    self._send_text("Ok.\n")
             elif path == "/api/v2/auth/login":
                 self._handle_qbit_login()
             elif path == "/api/v2/torrents/add":
