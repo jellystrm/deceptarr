@@ -230,7 +230,15 @@ def _time_ago(seconds: int) -> str:
 
 
 def _pipeline_card(settings: Settings) -> str:
-    return _indexer_card(settings) + _download_card(settings)
+    left = _indexer_card(settings)
+    right = _download_card(settings)
+    return (
+        "<div id='pipeline' style='"
+        "display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start"
+        "'>"
+        f"{left}{right}"
+        "</div>"
+    )
 
 
 def _indexer_card(settings: Settings) -> str:
@@ -285,7 +293,7 @@ def _indexer_card(settings: Settings) -> str:
         )
 
     return f"""
-  <div class="card" style="margin:0 0 14px">
+  <div class="card" style="margin:0">
     <div class="card-header">
       <div>
         <div class="card-title">Indexer</div>
@@ -444,7 +452,7 @@ def _download_card(settings: Settings) -> str:
         )
 
     return f"""
-  <div class="card" id="pipeline" style="margin:0">
+  <div class="card" style="margin:0">
     <div class="card-header">
       <div>
         <div class="card-title">Download Tasks</div>

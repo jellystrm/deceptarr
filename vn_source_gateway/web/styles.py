@@ -222,5 +222,6 @@ details[open] .pipe-detail summary::before { transform: rotate(90deg); }
   .sidebar { display: none; }
   .topbar, .main { margin-left: 0; }
   .row, .row.cols-3 { grid-template-columns: 1fr; }
+  #pipeline { grid-template-columns: 1fr !important; }
 }
 """
