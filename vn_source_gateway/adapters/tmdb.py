@@ -70,6 +70,37 @@ class TmdbClient:
             _cache[cache_key] = result
         return result
 
+    # ── Movie metadata ────────────────────────────────────────────────────────
+
+    def get_movie_title(self, tmdb_id: int) -> tuple[str, int] | None:
+        """Return (title, year) for a movie, or None on failure. Cached."""
+        cache_key = f"movie_title:{tmdb_id}"
+        with _lock:
+            if cache_key in _cache:
+                return _cache[cache_key]
+        result = self._fetch_movie_title(tmdb_id)
+        with _lock:
+            _cache[cache_key] = result
+        return result
+
+    def _fetch_movie_title(self, tmdb_id: int) -> tuple[str, int] | None:
+        if not self.enabled:
+            return None
+        try:
+            r = self.session.get(f"{_BASE}/movie/{tmdb_id}", params={"language": "en-US"}, timeout=10)
+            if r.status_code != 200:
+                return None
+            data = r.json()
+            title = data.get("title") or data.get("original_title")
+            if not title:
+                return None
+            raw_date = data.get("release_date") or ""
+            year = int(raw_date[:4]) if raw_date[:4].isdigit() else 0
+            return title, year
+        except Exception as exc:
+            log.debug("TMDB movie title failed for %s: %s", tmdb_id, exc)
+            return None
+
     # ── Series metadata ───────────────────────────────────────────────────────
 
     def get_series_info(self, tmdb_id: int) -> TmdbSeriesInfo:

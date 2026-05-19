@@ -53,7 +53,21 @@ def build_releases(settings: Settings, query: dict[str, list[str]]) -> list[Gate
     episode = _int_or_none(_first(query, "ep", ""))
     year = _int_or_none(_first(query, "year", ""))
 
-    is_tv = t == "tvsearch" or season is not None or episode is not None or tvdb_id is not None
+    # Determine kind:
+    # 1. Explicit search type (t=movie / t=tvsearch) takes highest priority.
+    # 2. TV-specific params (tvdbid, season, ep) → TV.
+    # 3. For t=search (generic), use the cat= parameter that Radarr/Sonarr always send:
+    #    cat contains 5xxx → TV; cat contains 2xxx → movie.
+    # 4. tmdbid without other TV signals → movie (Radarr sends tmdbid for movies).
+    cats = {c.strip() for c in _first(query, "cat", "").split(",") if c.strip()}
+    is_tv_by_cat = bool(cats & {"5000", "5030", "5040"}) and not bool(cats & {"2000", "2040"})
+    is_tv = (
+        t == "tvsearch"
+        or season is not None
+        or episode is not None
+        or tvdb_id is not None
+        or (t not in {"movie"} and is_tv_by_cat)
+    )
     kind = "episode" if is_tv else "movie"
     title = q or (f"TVDB {tvdb_id}" if is_tv and tvdb_id else "") or (f"TMDB {tmdb_id}" if tmdb_id else "") or "VN Source"
     modes: list[OutputMode] = ["strm", "download"] if settings.expose_both_modes else [_output_mode(settings.default_output_mode)]
