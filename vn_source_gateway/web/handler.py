@@ -34,10 +34,7 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
             elif path.lstrip("/") in ALL_SECTIONS:
                 section = path.lstrip("/")
                 settings_tab = qs.get("tab", [""])[0]
-                msg = "Saved successfully." if "saved" in qs else (
-                    "Started one worker cycle. Check logs." if "run" in qs else ""
-                )
-                self._send_html(render_page(Settings.load(), msg, section, settings_tab))
+                self._send_html(render_page(Settings.load(), "", section, settings_tab))
             elif path == "/api/config":
                 self._send_json(Settings.load().to_config_dict())
             elif path == "/api/jobs":
@@ -80,20 +77,20 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
                 try:
                     data = form_to_config(form, settings)
                     save_settings(data, settings.config_path)
-                    self._redirect(_section_redirect(section, saved=True))
-                except Exception as exc:
-                    self._send_html(render_page(settings, f"Save failed: {exc}", section), HTTPStatus.BAD_REQUEST)
+                except Exception:
+                    log.exception("Save failed")
+                self._redirect(_section_redirect(section))
             elif path == "/test":
                 form = self._read_form()
                 section = form.get("_section", "radarr")
                 settings = Settings.load()
                 if section == "radarr":
-                    message = test_connection("Radarr", settings.radarr_url, settings.radarr_api_key)
+                    test_connection("Radarr", settings.radarr_url, settings.radarr_api_key)
                 elif section == "sonarr":
-                    message = test_connection("Sonarr", settings.sonarr_url, settings.sonarr_api_key)
+                    test_connection("Sonarr", settings.sonarr_url, settings.sonarr_api_key)
                 else:
-                    message = test_connections(settings)
-                self._send_html(render_page(settings, message, section))
+                    test_connections(settings)
+                self._redirect("/settings?tab=" + section)
             elif path == "/tasks/action":
                 form = self._read_form()
                 settings = Settings.load()
@@ -105,10 +102,7 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
                     qbittorrent.pause(settings, hashes, True)
                 elif action == "delete":
                     qbittorrent.delete(settings, hashes)
-                else:
-                    self.send_error(HTTPStatus.BAD_REQUEST, "Unsupported task action")
-                    return
-                self._redirect("/download-tasks?saved=1")
+                self._redirect("/dashboard")
             elif path == "/api/v2/auth/login":
                 self._handle_qbit_login()
             elif path == "/api/v2/torrents/add":
@@ -239,11 +233,8 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
     return Handler
 
 
-def _section_redirect(section: str, *, saved: bool = False, run: bool = False) -> str:
-    flag = "saved=1" if saved else "run=1" if run else ""
+def _section_redirect(section: str) -> str:
     if section in {"radarr", "sonarr", "worker", "indexer", "downloader", "jellyfin"}:
-        return f"/settings?tab={section}" + (f"&{flag}" if flag else "")
-    if section == "runtime":
-        return "/settings?tab=output" + (f"&{flag}" if flag else "")
+        return f"/settings?tab={section}"
     target = SECTION_ALIASES.get(section, section)
-    return f"/{target}" + (f"?{flag}" if flag else "")
+    return f"/{target}"
