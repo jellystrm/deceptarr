@@ -79,25 +79,52 @@ def resolve_release(settings: Settings, release: GatewayRelease) -> SourceHit | 
 
 
 def _enrich_with_tmdb(settings: Settings, release: GatewayRelease) -> GatewayRelease:
-    """Fill in missing tmdb_id via TMDB API lookup when we only have tvdb_id or imdb_id."""
-    if release.tmdb_id:
-        return release
+    """Fill in missing tmdb_id/title/year via TMDB API lookup."""
     tmdb = TmdbClient(settings.tmdb_api_key)
     if not tmdb.enabled:
         return release
-    tmdb_id: int | None = None
-    if release.kind == "episode" and release.tvdb_id:
-        tmdb_id = tmdb.tmdb_id_for_tvdb(release.tvdb_id)
-        if tmdb_id:
-            log.debug("TMDB lookup: tvdb=%s → tmdb=%s", release.tvdb_id, tmdb_id)
-    if tmdb_id is None and release.imdb_id:
-        kind = "movie" if release.kind == "movie" else "tv"
-        tmdb_id = tmdb.tmdb_id_for_imdb(release.imdb_id, kind)
-        if tmdb_id:
-            log.debug("TMDB lookup: imdb=%s → tmdb=%s", release.imdb_id, tmdb_id)
-    if tmdb_id is None:
-        return release
-    return replace(release, tmdb_id=tmdb_id)
+
+    # Step 1: resolve tmdb_id if not present
+    tmdb_id = release.tmdb_id
+    if not tmdb_id:
+        if release.kind == "episode" and release.tvdb_id:
+            tmdb_id = tmdb.tmdb_id_for_tvdb(release.tvdb_id)
+            if tmdb_id:
+                log.debug("TMDB lookup: tvdb=%s → tmdb=%s", release.tvdb_id, tmdb_id)
+        if tmdb_id is None and release.imdb_id:
+            kind = "movie" if release.kind == "movie" else "tv"
+            tmdb_id = tmdb.tmdb_id_for_imdb(release.imdb_id, kind)
+            if tmdb_id:
+                log.debug("TMDB lookup: imdb=%s → tmdb=%s", release.imdb_id, tmdb_id)
+
+    # Step 2: enrich title + year from TMDB when title is a placeholder (no real name)
+    updates: dict = {}
+    if tmdb_id and tmdb_id != release.tmdb_id:
+        updates["tmdb_id"] = tmdb_id
+    if tmdb_id and _is_placeholder_title(release.title):
+        if release.kind == "movie":
+            info = tmdb.get_movie_title(tmdb_id)
+            if info:
+                real_title, real_year = info
+                updates["title"] = real_title
+                if real_year and not release.year:
+                    updates["year"] = real_year
+                log.debug("TMDB movie title: tmdb=%s → %r (%s)", tmdb_id, real_title, real_year)
+        else:
+            series = tmdb.get_series_info(tmdb_id)
+            if series.title:
+                updates["title"] = series.title
+                if series.series_year and not release.year:
+                    updates["year"] = series.series_year
+                log.debug("TMDB series title: tmdb=%s → %r (%s)", tmdb_id, series.title, series.series_year)
+
+    return replace(release, **updates) if updates else release
+
+
+def _is_placeholder_title(title: str) -> bool:
+    """True when the title is a TMDB/TVDB ID placeholder rather than a real name."""
+    import re
+    return bool(re.match(r"^(TMDB|TVDB|VN Source)\s*\d*$", title.strip()))
 
 
 def encode_release(release: GatewayRelease) -> str:

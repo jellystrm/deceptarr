@@ -14,9 +14,9 @@ from .cards import (
 from .styles import CSS
 
 _NAV = [
-    ("dashboard", "&#9654;", "Dashboard"),
-    ("sources", "&#9654;", "Sources"),
-    ("settings", "&#9654;", "Settings"),
+    ("dashboard", "Dashboard"),
+    ("sources", "Sources"),
+    ("settings", "Settings"),
 ]
 
 SECTION_ALIASES = {
@@ -30,7 +30,7 @@ SECTION_ALIASES = {
     "downloader": "settings",
     "jellyfin": "settings",
 }
-ALL_SECTIONS = {s for s, _, _ in _NAV} | set(SECTION_ALIASES)
+ALL_SECTIONS = {s for s, _ in _NAV} | set(SECTION_ALIASES)
 
 
 def render_page(settings: Settings, message: str, section: str, settings_tab: str = "") -> str:
@@ -50,10 +50,6 @@ def render_page(settings: Settings, message: str, section: str, settings_tab: st
     templates = json.dumps(config["hls_template_sources"], indent=2)
     source_order = ",".join(config["source_order"])
     ffmpeg_args = ",".join(config["ffmpeg_extra_args"])
-    radarr_ok = "ok" if settings.radarr_url and settings.radarr_api_key else ""
-    sonarr_ok = "ok" if settings.sonarr_url and settings.sonarr_api_key else ""
-    worker_ok = "ok" if settings.radarr_url or settings.sonarr_url else ""
-    sources_display = html.escape(",".join(settings.source_order) or "none configured")
     msg_html = f'<div class="notice">{html.escape(message)}</div>' if message else ""
     section_title = {
         "dashboard": "Dashboard",
@@ -82,8 +78,8 @@ def render_page(settings: Settings, message: str, section: str, settings_tab: st
         content = card_html
 
     nav_items = "\n".join(
-        f'    <a href="/{s}" class="nav-item{"  active" if s == section else ""}"><span class="nav-icon">{icon}</span> {label}</a>'
-        for s, icon, label in _NAV
+        f'    <a href="/{s}" class="nav-item{"  active" if s == section else ""}">{label}</a>'
+        for s, label in _NAV
     )
 
     return f"""<!doctype html>
@@ -106,7 +102,6 @@ def render_page(settings: Settings, message: str, section: str, settings_tab: st
     </div>
   </a>
   <div class="nav-group">
-    <div class="nav-group-label">Navigation</div>
 {nav_items}
   </div>
 </nav>
@@ -118,28 +113,10 @@ def render_page(settings: Settings, message: str, section: str, settings_tab: st
 <main class="main">
   {msg_html}
 
-  <div class="status-bar">
-    <div class="pill {radarr_ok}">
-      <span class="dot"></span><span class="pill-label">Radarr</span>
-      <span>{"configured" if radarr_ok else "not configured"}</span>
-    </div>
-    <div class="pill {sonarr_ok}">
-      <span class="dot"></span><span class="pill-label">Sonarr</span>
-      <span>{"configured" if sonarr_ok else "not configured"}</span>
-    </div>
-    <div class="pill {worker_ok}">
-      <span class="dot"></span><span class="pill-label">Worker</span>
-      <span>{"configured" if settings.radarr_url or settings.sonarr_url else "not configured"}</span>
-    </div>
-    <div class="pill">
-      <span class="dot"></span><span class="pill-label">Sources</span>
-      <span>{sources_display}</span>
-    </div>
-  </div>
-
   {content}
 
 </main>
+
 </body>
 </html>"""
 

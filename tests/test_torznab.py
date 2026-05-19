@@ -81,9 +81,7 @@ class TestSearchResponse:
 
 class TestBuildReleases:
     def test_one_release_per_source_and_mode(self, settings):
-        # default source_order = [kkphim, ophim], expose_both_modes default
         releases = build_releases(settings, {"t": ["movie"], "tmdbid": ["24428"]})
-        # 2 sources × N modes
         assert len(releases) >= 2
         assert all(r.kind == "movie" for r in releases)
 
@@ -97,3 +95,28 @@ class TestBuildReleases:
         from dataclasses import replace
         s = replace(Settings.load(), source_order=[])
         assert build_releases(s, {"t": ["movie"], "tmdbid": ["1"]}) == []
+
+    # ── Category-based kind routing (Radarr vs Sonarr) ───────────────────────
+
+    def test_generic_search_with_tv_cat_returns_episode(self, settings):
+        """Sonarr sends t=search&cat=5000,5030,5040 — must produce TV results."""
+        releases = build_releases(settings, {"t": ["search"], "q": ["breaking bad"],
+                                             "cat": ["5000,5030,5040"]})
+        assert all(r.kind == "episode" for r in releases)
+
+    def test_generic_search_with_movie_cat_returns_movie(self, settings):
+        """Radarr sends t=search&cat=2000,2040 — must produce movie results."""
+        releases = build_releases(settings, {"t": ["search"], "q": ["avengers"],
+                                             "cat": ["2000,2040"]})
+        assert all(r.kind == "movie" for r in releases)
+
+    def test_explicit_t_movie_beats_cat(self, settings):
+        """t=movie always returns movie even if cat has TV entries."""
+        releases = build_releases(settings, {"t": ["movie"], "tmdbid": ["24428"],
+                                             "cat": ["5000"]})
+        assert all(r.kind == "movie" for r in releases)
+
+    def test_generic_search_no_cat_defaults_to_movie(self, settings):
+        """Fallback: t=search without cat or TV params defaults to movie."""
+        releases = build_releases(settings, {"t": ["search"], "q": ["avengers"]})
+        assert all(r.kind == "movie" for r in releases)

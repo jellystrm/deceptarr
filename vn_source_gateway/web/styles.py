@@ -53,14 +53,6 @@ body {
 .brand-name { font-size: 14px; font-weight: 700; color: var(--text); letter-spacing: -0.2px; line-height: 1.2; }
 .brand-sub { font-size: 11px; color: var(--muted); font-weight: 400; }
 .nav-group { padding: 10px 0 4px; }
-.nav-group-label {
-  padding: 4px 18px 6px;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.09em;
-  color: var(--muted);
-}
 .nav-item {
   display: flex;
   align-items: center;
@@ -74,7 +66,6 @@ body {
 }
 .nav-item:hover { color: var(--text); background: rgba(255,255,255,0.03); }
 .nav-item.active { border-left-color: var(--accent); color: var(--accent); background: var(--accent-dim); font-weight: 600; }
-.nav-icon { width: 16px; text-align: center; opacity: 0.7; flex-shrink: 0; }
 /* Topbar */
 .topbar {
   position: fixed;
@@ -92,12 +83,6 @@ body {
 .topbar-sub { font-size: 12px; color: var(--muted); font-weight: 400; margin-left: 8px; }
 /* Main */
 .main { margin-left: var(--sidebar-w); margin-top: var(--topbar-h); padding: 24px 28px 48px; max-width: 980px; }
-/* Status pills */
-.status-bar { display: flex; gap: 10px; margin-bottom: 22px; flex-wrap: wrap; }
-.pill { display: flex; align-items: center; gap: 8px; background: var(--card-bg); border: 1px solid var(--border); border-radius: 6px; padding: 7px 14px; font-size: 13px; }
-.dot { width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
-.pill.ok .dot { background: var(--green); }
-.pill-label { color: var(--muted); }
 /* Notice */
 .notice {
   background: rgba(245,166,35,0.08);
