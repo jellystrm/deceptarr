@@ -2,18 +2,17 @@ from __future__ import annotations
 
 import json
 import logging
-import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from ..config import Settings, save_settings
-from ..download_clients import qbittorrent
-from ..gateway import enqueue_from_url
-from ..torznab import caps_response, search_response
-from .forms import form_to_config, parse_multipart, read_urlencoded, run_once, test_connections
-from .page import ALL_SECTIONS, render_page
+from vn_source_gateway.application.grab_service import enqueue_from_url
+from vn_source_gateway.infrastructure.config import Settings, save_settings
+from vn_source_gateway.interfaces.download_clients import qbittorrent
+from vn_source_gateway.interfaces.indexers.torznab import caps_response, search_response
+from .forms import form_to_config, parse_multipart, read_urlencoded, test_connection, test_connections
+from .page import ALL_SECTIONS, SECTION_ALIASES, render_page
 
 log = logging.getLogger(__name__)
 
@@ -31,13 +30,11 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
             qs = parse_qs(parsed.query)
 
             if path in {"/", "/index.html"}:
-                self._redirect("/worker")
+                self._redirect("/dashboard")
             elif path.lstrip("/") in ALL_SECTIONS:
                 section = path.lstrip("/")
-                msg = "Saved successfully." if "saved" in qs else (
-                    "Started one worker cycle. Check logs." if "run" in qs else ""
-                )
-                self._send_html(render_page(Settings.load(), msg, section))
+                settings_tab = qs.get("tab", [""])[0]
+                self._send_html(render_page(Settings.load(), "", section, settings_tab))
             elif path == "/api/config":
                 self._send_json(Settings.load().to_config_dict())
             elif path == "/api/jobs":
@@ -80,20 +77,32 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
                 try:
                     data = form_to_config(form, settings)
                     save_settings(data, settings.config_path)
-                    self._redirect(f"/{section}?saved=1")
-                except Exception as exc:
-                    self._send_html(render_page(settings, f"Save failed: {exc}", section), HTTPStatus.BAD_REQUEST)
+                except Exception:
+                    log.exception("Save failed")
+                self._redirect(_section_redirect(section))
             elif path == "/test":
                 form = self._read_form()
                 section = form.get("_section", "radarr")
                 settings = Settings.load()
-                self._send_html(render_page(settings, test_connections(settings), section))
-            elif path == "/run-once":
+                if section == "radarr":
+                    test_connection("Radarr", settings.radarr_url, settings.radarr_api_key)
+                elif section == "sonarr":
+                    test_connection("Sonarr", settings.sonarr_url, settings.sonarr_api_key)
+                else:
+                    test_connections(settings)
+                self._redirect("/settings?tab=" + section)
+            elif path == "/tasks/action":
                 form = self._read_form()
-                section = form.get("_section", "radarr")
                 settings = Settings.load()
-                threading.Thread(target=run_once, args=(settings,), name="vn-source-gateway-manual-run", daemon=True).start()
-                self._redirect(f"/{section}?run=1")
+                action = form.get("action", "")
+                hashes = form.get("hashes", "")
+                if action == "resume":
+                    qbittorrent.pause(settings, hashes, False)
+                elif action == "pause":
+                    qbittorrent.pause(settings, hashes, True)
+                elif action == "delete":
+                    qbittorrent.delete(settings, hashes)
+                self._redirect("/dashboard")
             elif path == "/api/v2/auth/login":
                 self._handle_qbit_login()
             elif path == "/api/v2/torrents/add":
@@ -126,8 +135,18 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
             settings = Settings.load()
             api_key = query.get("apikey", [""])[0]
             if settings.torznab_api_key and api_key != settings.torznab_api_key:
+                log.warning("Torznab request rejected: invalid API key")
                 self.send_error(HTTPStatus.UNAUTHORIZED)
                 return
+            log.info(
+                "Torznab request: t=%s q=%s tmdbid=%s tvdbid=%s season=%s ep=%s",
+                query.get("t", ["search"])[0],
+                query.get("q", [""])[0],
+                query.get("tmdbid", [""])[0],
+                query.get("tvdbid", [""])[0],
+                query.get("season", [""])[0],
+                query.get("ep", [""])[0],
+            )
             body = caps_response() if query.get("t", ["search"])[0] == "caps" else search_response(settings, query)
             self._send_xml(body)
 
@@ -135,8 +154,10 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
             settings = Settings.load()
             form = self._read_form()
             if form.get("username", "") != settings.qb_username or form.get("password", "") != settings.qb_password:
+                log.warning("Download client login rejected for user=%s", form.get("username", ""))
                 self._send_text("Fails.\n", HTTPStatus.FORBIDDEN)
                 return
+            log.info("Download client login accepted for user=%s", form.get("username", ""))
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
             self.send_header("Set-Cookie", "SID=vn-source; HttpOnly; path=/")
@@ -157,8 +178,10 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
                 job = enqueue_from_url(settings, url, category=category, paused=paused)
                 added.append(job.job_id)
             if not added:
+                log.warning("Download client add rejected: missing urls field")
                 self.send_error(HTTPStatus.BAD_REQUEST, "No supported urls field")
                 return
+            log.info("Download client add accepted: category=%s paused=%s jobs=%s", category, paused, ",".join(added))
             self._send_text("Ok.\n")
 
         def _read_form(self) -> dict[str, str]:
@@ -208,3 +231,10 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
             self.wfile.write(encoded)
 
     return Handler
+
+
+def _section_redirect(section: str) -> str:
+    if section in {"radarr", "sonarr", "worker", "indexer", "downloader", "jellyfin"}:
+        return f"/settings?tab={section}"
+    target = SECTION_ALIASES.get(section, section)
+    return f"/{target}"

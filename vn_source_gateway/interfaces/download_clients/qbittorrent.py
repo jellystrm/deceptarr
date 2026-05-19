@@ -4,10 +4,10 @@ import threading
 import time
 from typing import Any
 
-from ..config import Settings
-from ..gateway import process_job
-from ..jobs import JobStore
-from ..models import GatewayJob
+from vn_source_gateway.application.grab_service import process_job
+from vn_source_gateway.domain.models import GatewayJob
+from vn_source_gateway.infrastructure.config import Settings
+from vn_source_gateway.infrastructure.jobs import JobStore
 
 
 def torrents_info(settings: Settings) -> list[dict[str, Any]]:
@@ -19,10 +19,21 @@ def pause(settings: Settings, hashes: str, paused: bool) -> None:
     store = JobStore(settings.state_path)
     for job_id in _hashes(settings, hashes):
         job = store.get(job_id)
-        if job:
-            store.update(job_id, paused=paused)
-            if not paused and job.status == "queued":
-                threading.Thread(target=process_job, args=(settings, job_id), name=f"vn-source-job-{job_id[:8]}", daemon=True).start()
+        if not job:
+            continue
+        if paused:
+            store.update(job_id, paused=True)
+            continue
+        # Resume == retry: re-queue and re-run unless the job is already done.
+        # Covers queued, error, and zombie "running" jobs (thread died on restart).
+        if job.status in {"queued", "error", "running"}:
+            store.update(job_id, paused=False, status="queued", progress=0.0, error=None)
+            threading.Thread(
+                target=process_job, args=(settings, job_id),
+                name=f"vn-source-job-{job_id[:8]}", daemon=True,
+            ).start()
+        else:
+            store.update(job_id, paused=False)
 
 
 def delete(settings: Settings, hashes: str) -> None:

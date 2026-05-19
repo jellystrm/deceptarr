@@ -6,8 +6,8 @@ from typing import Any
 
 import requests
 
-from ..models import EpisodeWanted, MovieWanted, SourceHit
-from ..tmdb import TmdbClient, TmdbSeriesInfo
+from vn_source_gateway.adapters.tmdb import TmdbClient, TmdbSeriesInfo
+from vn_source_gateway.domain.models import EpisodeWanted, MovieWanted, SourceHit
 from .base import Source
 from .scoring import detect_season, score_item, season_for_abs_ep
 from .text import _is_supported_lang, _safe_int, normalize_text
@@ -157,10 +157,11 @@ class PhimApiSource(Source):
         return out
 
     def _first_hls(self, detail: dict[str, Any]) -> SourceHit | None:
+        headers: dict[str, str] = {"Referer": f"{self.base_url}/"}
         for item in self._server_data(detail):
             url = item.get("link_m3u8")
             if url:
-                return SourceHit(self.name, str(url), {})
+                return SourceHit(self.name, str(url), headers)
         return None
 
     def _episode_hls_from_slug(

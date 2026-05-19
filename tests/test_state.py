@@ -6,7 +6,7 @@ import os
 import time
 
 import pytest
-from vn_source_gateway.state import StateStore
+from vn_source_gateway.infrastructure.state import StateStore
 
 
 @pytest.fixture

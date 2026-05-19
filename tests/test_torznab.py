@@ -4,8 +4,8 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 
 import pytest
-from vn_source_gateway.config import Settings
-from vn_source_gateway.torznab import build_releases, caps_response, search_response
+from vn_source_gateway.infrastructure.config import Settings
+from vn_source_gateway.interfaces.indexers.torznab import build_releases, caps_response, search_response
 
 
 @pytest.fixture

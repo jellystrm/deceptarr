@@ -8,12 +8,12 @@ import threading
 import time
 from dataclasses import asdict, replace
 
-from .config import Settings
-from .jobs import JobStore
-from .models import EpisodeWanted, GatewayJob, GatewayRelease, MovieWanted, SourceHit
-from .output import OutputService
-from .sources import Source, build_sources
-from .tmdb import TmdbClient
+from vn_source_gateway.adapters.tmdb import TmdbClient
+from vn_source_gateway.application.output_service import OutputService
+from vn_source_gateway.domain.models import EpisodeWanted, GatewayJob, GatewayRelease, MovieWanted, SourceHit
+from vn_source_gateway.infrastructure.config import Settings
+from vn_source_gateway.infrastructure.jobs import JobStore
+from vn_source_gateway.sources import Source, build_sources
 
 log = logging.getLogger(__name__)
 

@@ -4,7 +4,7 @@ from typing import Any
 
 import requests
 
-from ..models import EpisodeWanted, MovieWanted, SourceHit
+from vn_source_gateway.domain.models import EpisodeWanted, MovieWanted, SourceHit
 from .base import Source
 
 
