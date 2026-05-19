@@ -219,56 +219,89 @@ def _detail_panel(steps: list[tuple[str, str, str, str]], open_by_default: bool 
     )
 
 
+def _time_ago(seconds: int) -> str:
+    if seconds < 60:
+        return f"{seconds}s ago"
+    if seconds < 3600:
+        return f"{seconds // 60}m ago"
+    if seconds < 86400:
+        return f"{seconds // 3600}h ago"
+    return f"{seconds // 86400}d ago"
+
+
 def _pipeline_card(settings: Settings) -> str:
-    from vn_source_gateway.infrastructure.activity import ActivityLog, ActivityEvent
+    return _indexer_card(settings) + _download_card(settings)
+
+
+def _indexer_card(settings: Settings) -> str:
+    """Card 1: recent indexer searches from Radarr/Sonarr."""
+    from vn_source_gateway.infrastructure.activity import ActivityLog
     import time as _time
 
-    # ── collect jobs ──────────────────────────────────────────────────────────
+    now = int(_time.time())
+    events = ActivityLog.get().recent(100)
+    searches = [e for e in events if e.kind == "search"][:15]
+
+    if not searches:
+        body = "<p style='color:var(--muted);font-size:13px;padding:16px'>No indexer queries yet.</p>"
+    else:
+        rows = []
+        for ev in searches:
+            age = _time_ago(max(0, now - ev.ts))
+            # detail = "5 result(s) — sources: ophim"
+            results_part = ev.detail.split(" — ")[0] if " — " in ev.detail else ev.detail
+            dot = "ok" if ev.status == "ok" else "err"
+            rows.append(
+                "<tr>"
+                f"<td style='color:var(--muted);font-size:11px;white-space:nowrap;padding:8px 10px'>{html.escape(age)}</td>"
+                f"<td style='padding:8px 10px'>{html.escape(ev.title)}</td>"
+                f"<td style='color:var(--muted);font-size:12px;padding:8px 10px'>{html.escape(results_part)}</td>"
+                f"<td style='padding:8px 14px'><span class='sdot {dot}'></span></td>"
+                "</tr>"
+            )
+        body = (
+            "<table style='width:100%'><thead><tr>"
+            "<th style='padding:8px 10px'>Time</th>"
+            "<th style='padding:8px 10px'>Query</th>"
+            "<th style='padding:8px 10px'>Results</th>"
+            "<th style='padding:8px 14px'></th>"
+            "</tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
+        )
+
+    return f"""
+  <div class="card" style="margin:0 0 14px">
+    <div class="card-header">
+      <div>
+        <div class="card-title">Indexer</div>
+        <div class="card-desc">Recent searches from Radarr / Sonarr</div>
+      </div>
+    </div>
+    <div class="card-body" style="padding:0"><div style="overflow-x:auto">{body}</div></div>
+  </div>"""
+
+
+def _download_card(settings: Settings) -> str:
+    """Card 2: download jobs with progress bar."""
+    from vn_source_gateway.infrastructure.activity import ActivityLog
+    import time as _time
+
+    now = int(_time.time())
+
     try:
         jobs = sorted(
             qbittorrent.torrents_info(settings),
             key=lambda x: x.get("added_on", 0), reverse=True,
         )[:25]
-    except Exception as exc:
+    except Exception:
         jobs = []
 
-    # ── collect recent searches (no job yet) ──────────────────────────────────
-    now = int(_time.time())
-    events = ActivityLog.get().recent(50)
-    job_hashes = {j.get("hash", "") for j in jobs}
-    # searches in last 5 min with no matching job
-    pending_searches: list[ActivityEvent] = [
-        e for e in events
-        if e.kind == "search" and (now - e.ts) < 300
-    ]
-
-    rows = []
-
-    # index activity events by ref (job_id)
+    events = ActivityLog.get().recent(100)
     events_by_ref: dict[str, list] = {}
     for ev in events:
         if ev.ref:
             events_by_ref.setdefault(ev.ref, []).append(ev)
 
-    # ── pending searches (not grabbed yet) ───────────────────────────────────
-    for ev in pending_searches[:5]:
-        detail_html = _detail_panel([
-            ("🔍", "Search", ev.detail, "ok"),
-            ("·", "Matching", "waiting for grab...", ""),
-            ("·", "Saving", "", ""),
-            ("·", "Done", "", ""),
-        ], open_by_default=False)
-        rows.append(
-            "<tr>"
-            f"<td style='padding:12px 16px'>{html.escape(ev.title)}{detail_html}</td>"
-            f"<td>{_pipeline_steps('search', False, 0)}</td>"
-            f"<td style='color:var(--muted)'>—</td>"
-            f"<td style='color:var(--muted)'>—</td>"
-            "<td></td>"
-            "</tr>"
-        )
-
-    # ── jobs ──────────────────────────────────────────────────────────────────
+    rows = []
     for job in jobs:
         state = str(job.get("state", ""))
         progress = float(job.get("progress", 0))
@@ -276,82 +309,83 @@ def _pipeline_card(settings: Settings) -> str:
         job_id = str(job.get("hash", ""))
         is_error = "error" in state.lower()
         error_msg = str(job.get("error", "") or "")
+        save_path = str(job.get("save_path", "") or "")
+        path_display = save_path.split("/")[-1] if save_path else "—"
+        added_on = int(job.get("added_on", 0))
+        age = _time_ago(max(0, now - added_on)) if added_on else ""
 
-        # pipeline stage
+        # Stage
         if state in {"uploading", "pausedUP"}:
             stage = "done"
         elif is_error:
             stage = "error"
-        elif state == "downloading":
+        elif state in {"downloading", "queuedDL"}:
             stage = "saving" if progress >= 0.35 else "matching"
         elif state == "pausedDL":
             stage = "paused"
         else:
             stage = "matching"
 
-        pipeline_html = _pipeline_steps(stage, is_error, progress)
+        # Progress bar fill %
+        if stage == "done":
+            pct = 100
+            bar_cls = "done"
+            stage_label = "Done"
+        elif is_error:
+            pct = max(5, int(progress * 100))
+            bar_cls = "fail"
+            stage_label = f"Error — {error_msg[:60]}" if error_msg else "Error"
+        elif stage == "paused":
+            pct = max(5, int(progress * 100))
+            bar_cls = "pulse"
+            stage_label = f"Paused {int(progress * 100)}%"
+        elif stage == "saving":
+            pct = max(35, int(progress * 100))
+            bar_cls = "pulse"
+            stage_label = f"Saving {int(progress * 100)}%…"
+        elif stage == "matching":
+            pct = 15
+            bar_cls = "pulse"
+            stage_label = "Resolving source…"
+        else:
+            pct = 5
+            bar_cls = "pulse"
+            stage_label = "Queued"
 
-        # related activity events
+        progress_cell = (
+            f"<div style='display:flex;flex-direction:column;gap:5px'>"
+            f"<div class='pbar'>"
+            f"<div class='pbar-fill {bar_cls}' style='width:{pct}%'></div>"
+            f"<div class='pbar-txt'>{pct}%</div>"
+            f"</div>"
+            f"<div style='font-size:11px;color:var(--muted)'>{html.escape(stage_label)}</div>"
+            f"</div>"
+        )
+
+        # Detail panel
         job_events = events_by_ref.get(job_id, [])
         grab_ev = next((e for e in job_events if e.kind == "grab"), None)
         resolved_ev = next((e for e in job_events if e.kind == "job" and "Resolved" in e.detail), None)
         done_ev = next((e for e in job_events if e.kind == "job" and "Done" in e.detail), None)
-        err_ev = next((e for e in job_events if e.kind == "job" and e.status == "error"), None)
 
-        save_path = str(job.get("save_path", "") or "")
-        source = grab_ev.detail if grab_ev else (str(job.get("tags", "") or str(job.get("category", "") or "—")))
-        path_display = save_path.split("/")[-1] if save_path else "—"
+        match_msg = (resolved_ev.detail if resolved_ev
+                     else (grab_ev.detail if grab_ev
+                           else ("resolving source…" if stage == "matching" else "—")))
+        save_msg = (error_msg if is_error
+                    else (f"writing… {int(progress * 100)}%" if stage == "saving"
+                          else (done_ev.detail.replace("Done — ", "") if done_ev
+                                else (save_path if save_path else "—"))))
+        detail_html = _detail_panel([
+            ("🔍", "Search",   "grabbed from Radarr/Sonarr", "ok"),
+            ("⚙",  "Matching", match_msg, "ok" if (resolved_ev or grab_ev) else ""),
+            ("💾", "Saving",   save_msg,  "error" if is_error else ("ok" if done_ev or stage == "done" else "")),
+            ("✓",  "Done",     "completed" if stage == "done" else "", "ok" if stage == "done" else ""),
+        ], open_by_default=(is_error or stage not in {"done"}))
 
-        # build detail panel rows
-        search_msg = "grabbed from Radarr/Sonarr"
-        search_status = "ok"
+        source = (grab_ev.detail if grab_ev
+                  else str(job.get("tags", "") or job.get("category", "") or "—"))
 
-        if grab_ev:
-            match_msg = grab_ev.detail
-            match_status = "ok"
-        elif stage in {"matching"} and not is_error:
-            match_msg = "resolving source…"
-            match_status = ""
-        elif resolved_ev:
-            match_msg = resolved_ev.detail
-            match_status = "ok"
-        else:
-            match_msg = "—"
-            match_status = ""
-
-        if resolved_ev:
-            match_msg = resolved_ev.detail
-            match_status = "ok"
-
-        if is_error:
-            save_msg = error_msg or "failed"
-            save_status = "error"
-        elif stage == "saving":
-            save_msg = f"writing… {int(progress * 100)}%"
-            save_status = ""
-        elif done_ev:
-            save_msg = done_ev.detail.replace("Done — ", "")
-            save_status = "ok"
-        elif save_path:
-            save_msg = save_path
-            save_status = "ok"
-        else:
-            save_msg = "—"
-            save_status = ""
-
-        done_msg = "completed" if stage == "done" else ("—" if stage != "done" else "")
-        done_status = "ok" if stage == "done" else ""
-
-        detail_rows = [
-            ("🔍", "Search", search_msg, search_status),
-            ("⚙", "Matching", match_msg, match_status),
-            ("💾", "Saving", save_msg, save_status),
-            ("✓", "Done", done_msg, done_status),
-        ]
-        open_by_default = is_error or stage not in {"done"}
-        detail_html = _detail_panel(detail_rows, open_by_default=open_by_default)
-
-        # actions
+        # Action buttons
         buttons = ""
         if is_error:
             buttons += "<button type='submit' name='action' value='resume' class='btn btn-ghost btn-small'>Retry</button>"
@@ -361,35 +395,45 @@ def _pipeline_card(settings: Settings) -> str:
             buttons += "<button type='submit' name='action' value='resume' class='btn btn-ghost btn-small'>Resume</button>"
         buttons += "<button type='submit' name='action' value='delete' class='btn btn-danger btn-small'>Delete</button>"
 
+        name_cell = (
+            f"<div style='font-weight:500'>{html.escape(str(job.get('name', '')))}</div>"
+            + (f"<div style='font-size:11px;color:var(--muted);margin-top:2px'>{html.escape(age)}</div>" if age else "")
+            + detail_html
+        )
+
         rows.append(
             "<tr>"
-            f"<td style='padding:12px 16px'>{html.escape(str(job.get('name', '')))}{detail_html}</td>"
-            f"<td style='white-space:nowrap'>{pipeline_html}</td>"
-            f"<td style='color:var(--muted);font-size:12px'>{html.escape(source)}</td>"
-            f"<td style='color:var(--muted);font-size:12px' title='{_attr(save_path)}'>{html.escape(path_display)}</td>"
-            "<td style='white-space:nowrap'>"
+            f"<td style='padding:12px 16px'>{name_cell}</td>"
+            f"<td style='padding:12px 10px;white-space:nowrap'>{progress_cell}</td>"
+            f"<td style='color:var(--muted);font-size:12px;padding:12px 10px'>{html.escape(source)}</td>"
+            f"<td style='color:var(--muted);font-size:12px;padding:12px 10px' title='{_attr(save_path)}'>{html.escape(path_display)}</td>"
+            "<td style='white-space:nowrap;padding:12px 10px'>"
             f"<form method='post' action='/tasks/action' class='task-actions'>"
             f"<input type='hidden' name='hashes' value='{task_hash}'>"
-            f"{buttons}"
-            "</form>"
-            "</td>"
+            f"{buttons}</form></td>"
             "</tr>"
         )
 
     if not rows:
-        body = "<p style='color:var(--muted);font-size:13px'>No activity yet. Search or grab from Radarr/Sonarr to get started.</p>"
+        body = "<p style='color:var(--muted);font-size:13px;padding:16px'>No download tasks yet.</p>"
     else:
         body = (
             "<table style='width:100%'><thead><tr>"
-            "<th>Task Name</th><th>Progress</th><th>Source</th><th>Path</th><th>Actions</th>"
+            "<th style='padding:10px 16px'>Task Name</th>"
+            "<th style='padding:10px 10px'>Progress</th>"
+            "<th style='padding:10px 10px'>Source</th>"
+            "<th style='padding:10px 10px'>File</th>"
+            "<th style='padding:10px 10px'>Actions</th>"
             "</tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
         )
 
     return f"""
   <div class="card" id="pipeline" style="margin:0">
     <div class="card-header">
-      <div><div class="card-title">Download Tasks</div>
-      <div class="card-desc">Full pipeline: search → matching → saving → done</div></div>
+      <div>
+        <div class="card-title">Download Tasks</div>
+        <div class="card-desc">Grab → resolve source → save</div>
+      </div>
     </div>
     <div class="card-body" style="padding:0">
       <div style="overflow-x:auto">{body}</div>
