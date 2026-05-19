@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import json
 import logging
-import threading
 from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler
 from typing import Any
@@ -12,7 +11,7 @@ from vn_source_gateway.application.grab_service import enqueue_from_url
 from vn_source_gateway.infrastructure.config import Settings, save_settings
 from vn_source_gateway.interfaces.download_clients import qbittorrent
 from vn_source_gateway.interfaces.indexers.torznab import caps_response, search_response
-from .forms import form_to_config, parse_multipart, read_urlencoded, run_once, test_connection, test_connections
+from .forms import form_to_config, parse_multipart, read_urlencoded, test_connection, test_connections
 from .page import ALL_SECTIONS, SECTION_ALIASES, render_page
 
 log = logging.getLogger(__name__)
@@ -95,12 +94,6 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
                 else:
                     message = test_connections(settings)
                 self._send_html(render_page(settings, message, section))
-            elif path == "/run-once":
-                form = self._read_form()
-                section = form.get("_section", "radarr")
-                settings = Settings.load()
-                threading.Thread(target=run_once, args=(settings,), name="vn-source-gateway-manual-run", daemon=True).start()
-                self._redirect(_section_redirect(section, run=True))
             elif path == "/tasks/action":
                 form = self._read_form()
                 settings = Settings.load()

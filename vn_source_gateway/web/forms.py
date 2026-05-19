@@ -45,14 +45,6 @@ def read_urlencoded(body: bytes) -> dict[str, str]:
     return {key: values[-1] if values else "" for key, values in parsed.items()}
 
 
-def run_once(settings: Settings) -> None:
-    from vn_source_gateway.application.worker_service import Worker
-    try:
-        Worker(settings).run_once()
-    except Exception:
-        log.exception("Manual worker cycle failed")
-
-
 def test_connection(name: str, url: str, key: str) -> str:
     if not url or not key:
         return f"{name}: missing URL or API key"

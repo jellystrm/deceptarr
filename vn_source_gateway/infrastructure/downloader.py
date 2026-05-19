@@ -40,7 +40,8 @@ class HlsDownloader:
 
     def download(self, hit: SourceHit, output_path: str) -> None:
         os.makedirs(os.path.dirname(output_path), exist_ok=True)
-        tmp_path = f"{output_path}.part"
+        base, _ = os.path.splitext(output_path)
+        tmp_path = f"{base}.part.{self.container}"
         if os.path.exists(tmp_path):
             os.remove(tmp_path)
 

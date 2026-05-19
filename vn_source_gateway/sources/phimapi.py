@@ -157,10 +157,11 @@ class PhimApiSource(Source):
         return out
 
     def _first_hls(self, detail: dict[str, Any]) -> SourceHit | None:
+        headers: dict[str, str] = {"Referer": f"{self.base_url}/"}
         for item in self._server_data(detail):
             url = item.get("link_m3u8")
             if url:
-                return SourceHit(self.name, str(url), {})
+                return SourceHit(self.name, str(url), headers)
         return None
 
     def _episode_hls_from_slug(

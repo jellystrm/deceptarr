@@ -112,10 +112,6 @@ def render_page(settings: Settings, message: str, section: str, settings_tab: st
 
 <div class="topbar">
   <span class="topbar-title">{section_title} <span class="topbar-sub">{_attr(settings.config_path)}</span></span>
-  <form method="post" action="/run-once" style="margin:0">
-    <input type="hidden" name="_section" value="{html.escape(section)}">
-    <button type="submit" class="btn btn-ghost">&#9654; Run Once</button>
-  </form>
 </div>
 
 <main class="main">
