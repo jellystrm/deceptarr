@@ -1,3 +1,3 @@
-from .application.worker_service import main
+from .worker import main
 
 main()
