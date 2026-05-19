@@ -205,11 +205,18 @@ details[open] .pipe-detail summary::before { transform: rotate(90deg); }
 .pipe-step-msg.err { color: #e06c75; }
 .pipe-step-msg.ok  { color: var(--green); }
 /* Progress bar */
-.pbar { position: relative; width: 130px; height: 16px; background: rgba(255,255,255,0.06); border-radius: 8px; overflow: hidden; }
-.pbar-fill { position: absolute; left: 0; top: 0; height: 100%; background: var(--green); transition: width 0.4s ease; }
+.pbar { position: relative; width: 200px; height: 18px; background: rgba(255,255,255,0.06); border-radius: 9px; overflow: hidden; flex-shrink: 0; }
+.pbar-fill { position: absolute; left: 0; top: 0; height: 100%; background: var(--green); transition: width 0.4s ease; border-radius: 9px; }
 .pbar-fill.done { background: var(--accent); }
 .pbar-fill.fail { background: #e06c75; }
-.pbar-txt { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: var(--text); }
+.pbar-fill.pulse { background: linear-gradient(90deg,var(--green) 0%,rgba(76,175,130,0.5) 50%,var(--green) 100%); background-size: 200% 100%; animation: pulse-slide 1.5s linear infinite; }
+@keyframes pulse-slide { 0%{background-position:100% 0} 100%{background-position:-100% 0} }
+.pbar-txt { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; color: var(--text); letter-spacing: 0.04em; }
+/* Status dot */
+.sdot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--muted); flex-shrink: 0; }
+.sdot.ok  { background: var(--green); }
+.sdot.err { background: #e06c75; }
+.sdot.pending { background: var(--accent); }
 /* Responsive */
 @media (max-width: 768px) {
   .sidebar { display: none; }
