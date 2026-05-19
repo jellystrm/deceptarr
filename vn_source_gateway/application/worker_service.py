@@ -250,6 +250,14 @@ def main() -> None:
         level=getattr(logging, settings.log_level.upper(), logging.INFO),
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
+    # Persist activity log next to state.json
+    from vn_source_gateway.infrastructure.activity import ActivityLog
+    activity_path = settings.state_path.replace("state.json", "activity.json")
+    if activity_path == settings.state_path:          # fallback if path has no state.json
+        activity_path = settings.state_path + ".activity.json"
+    ActivityLog.init(activity_path)
+    log.info("Activity log: %s", activity_path)
+
     worker = Worker(settings)
     if settings.run_once or "--once" in sys.argv:
         log.info("vn-source-gateway running one cycle")
