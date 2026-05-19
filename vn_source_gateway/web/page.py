@@ -58,6 +58,17 @@ _DASHBOARD_POLL_JS = r"""
   }
 
   setInterval(refresh, INTERVAL);
+
+  // Intercept task-action form submits (Retry / Pause / Resume / Delete).
+  // POST via fetch so only #pipeline updates — no full-page reload, no
+  // Indexer card reset.
+  document.addEventListener('submit', function (e) {
+    if (!e.target.classList.contains('task-actions')) return;
+    e.preventDefault();
+    fetch(e.target.action, {method: 'POST', body: new FormData(e.target)})
+      .catch(function () {})
+      .finally(function () { refresh(); });
+  });
 })();
 """
 
