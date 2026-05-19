@@ -1,0 +1,53 @@
+# OpenMediaVault-ready compose file
+# Assumes OMV shared folders are mounted under /srv/dev-disk-by-uuid-<uuid>/<folder>
+# Adjust paths to match your actual OMV shared folder locations.
+#
+# Quick start:
+#   cp docker-compose.omv.yml docker-compose.yml
+#   # Edit the volume paths below, then:
+#   docker compose pull
+#   docker compose up -d
+
+services:
+  vn-source-gateway:
+    image: ghcr.io/jellystrm/vn-source-gateway:latest
+    container_name: vn-source-gateway
+    restart: unless-stopped
+    environment:
+      # Change to the IP/hostname your Radarr/Sonarr can reach this container on
+      PUBLIC_BASE_URL: http://192.168.1.100:8765
+      TORZNAB_API_KEY: vn-source
+      QB_USERNAME: admin
+      QB_PASSWORD: adminadmin
+      DEFAULT_OUTPUT_MODE: strm
+      EXPOSE_BOTH_MODES: "false"
+      # TMDB API key — required for season expansion and title resolution
+      # Get a free key at https://www.themoviedb.org/settings/api
+      TMDB_API_KEY: ""
+      # Server labels shown in Radarr/Sonarr interactive search (comma-separated)
+      SERVER_LABELS: "ViệtSub,Lồng Tiếng"
+      DOWNLOAD_ROOT: /downloads/vn
+      MOVIE_STRM_ROOT: /movies
+      SERIES_STRM_ROOT: /shows
+      DOWNLOAD_CONTAINER: mkv
+      POLL_INTERVAL_SECONDS: "300"
+      LOG_LEVEL: INFO
+      UI_PORT: "8765"
+    volumes:
+      # vn-source-gateway state & config — small, keep on your OS disk or a fast pool
+      - /srv/dev-disk-by-uuid-XXXX/appdata/vn-source-gateway/state:/state
+      - /srv/dev-disk-by-uuid-XXXX/appdata/vn-source-gateway/config:/config
+      # Downloads — same path that Radarr/Sonarr see inside their containers
+      - /srv/dev-disk-by-uuid-XXXX/downloads:/downloads
+      # STRM output — same paths that Jellyfin scans
+      - /srv/dev-disk-by-uuid-XXXX/media/movies:/movies
+      - /srv/dev-disk-by-uuid-XXXX/media/shows:/shows
+    ports:
+      - "8765:8765"
+    # Uncomment if Radarr/Sonarr/Jellyfin run on the same user-defined network
+    # networks:
+    #   - media
+
+# networks:
+#   media:
+#     external: true

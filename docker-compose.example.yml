@@ -1,6 +1,6 @@
 services:
   vn-source-gateway:
-    build: .
+    image: ghcr.io/jellystrm/vn-source-gateway:latest
     container_name: vn-source-gateway
     restart: unless-stopped
     environment:
