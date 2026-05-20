@@ -102,6 +102,17 @@ async function post<T>(path: string, body: unknown): Promise<T> {
   return r.json()
 }
 
+async function authPost(path: string, body: unknown): Promise<{ status?: string; error?: string }> {
+  const r = await fetch(path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  })
+  const data = await r.json().catch(() => ({}))
+  if (!r.ok && !data.error) data.error = `${r.status} ${r.statusText}`
+  return data
+}
+
 async function postForm(path: string, form: Record<string, string>): Promise<void> {
   const body = new URLSearchParams(form)
   await fetch(path, {
@@ -115,8 +126,8 @@ async function postForm(path: string, form: Record<string, string>): Promise<voi
 
 export interface AuthStatus { initialized: boolean; authenticated: boolean }
 export const getAuthStatus   = ()  => fetch('/api/auth/status', { cache: 'no-store' }).then(r => r.json()) as Promise<AuthStatus>
-export const authSetup       = (username: string, password: string) => post<{ status: string; error?: string }>('/api/auth/setup', { username, password })
-export const authLogin       = (username: string, password: string) => post<{ status: string; error?: string }>('/api/auth/login', { username, password })
+export const authSetup       = (username: string, password: string) => authPost('/api/auth/setup', { username, password })
+export const authLogin       = (username: string, password: string) => authPost('/api/auth/login', { username, password })
 export const authLogout      = () => fetch('/api/auth/logout', { method: 'POST' })
 
 export const getHealth       = ()  => get<Record<string, HealthResult>>('/api/health')

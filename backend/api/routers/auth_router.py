@@ -25,7 +25,7 @@ def auth_status(request: Request) -> JSONResponse:
 
 
 @router.post("/api/auth/setup")
-async def auth_setup(request: Request, response: Response) -> JSONResponse:
+async def auth_setup(request: Request) -> JSONResponse:
     """First-time account creation. Returns 400 if already initialized."""
     settings = Settings.load()
     if settings.auth_username and settings.auth_password_hash:
@@ -42,12 +42,13 @@ async def auth_setup(request: Request, response: Response) -> JSONResponse:
     config_data["auth_password_hash"] = hash_password(password)
     save_settings(config_data, settings.config_path)
     token = create_session()
+    response = JSONResponse({"status": "ok"})
     response.set_cookie(COOKIE_NAME, token, httponly=True, max_age=SESSION_TTL, samesite="lax")
-    return JSONResponse({"status": "ok"})
+    return response
 
 
 @router.post("/api/auth/login")
-async def auth_login(request: Request, response: Response) -> JSONResponse:
+async def auth_login(request: Request) -> JSONResponse:
     settings = Settings.load()
     if not settings.auth_username or not settings.auth_password_hash:
         return JSONResponse({"error": "Not initialized"}, status_code=400)
@@ -57,8 +58,9 @@ async def auth_login(request: Request, response: Response) -> JSONResponse:
     if username != settings.auth_username or not verify_password(password, settings.auth_password_hash):
         return JSONResponse({"error": "Invalid username or password"}, status_code=401)
     token = create_session()
+    response = JSONResponse({"status": "ok"})
     response.set_cookie(COOKIE_NAME, token, httponly=True, max_age=SESSION_TTL, samesite="lax")
-    return JSONResponse({"status": "ok"})
+    return response
 
 
 @router.post("/api/auth/logout")
