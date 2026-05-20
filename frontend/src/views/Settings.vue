@@ -29,7 +29,7 @@
         <Check label="Series monitoring enabled" v-model="cfg.series_enabled" />
         <Field label="Poll interval (s)" v-model.number="cfg.poll_interval_seconds" type="number" />
         <Field label="Max items per poll" v-model.number="cfg.max_items_per_poll" type="number" />
-        <Field label="Series .strm root (auto-detected from Sonarr root folder)" v-model="cfg.series_strm_root" placeholder="/shows" />
+        <Field label="Series .strm root (auto-detected from Sonarr root folder)" v-model="cfg.series_strm_root" placeholder="/series" />
         <p class="hint">Leave blank to auto-detect from Sonarr root folder on each start.</p>
       </template>
 

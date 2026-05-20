@@ -16,7 +16,7 @@ services:
       - ./appdata:/app/appdata        # state / job store
       - ./downloads:/downloads        # must match qBittorrent save path
       - ./movies:/movies              # must match Radarr root folder / Jellyfin library
-      - ./shows:/shows                # must match Sonarr root folder / Jellyfin library
+      - ./series:/series              # must match Sonarr root folder / Jellyfin library
     networks:
       - media
 

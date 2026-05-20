@@ -245,7 +245,7 @@ class Settings:
     # ── Storage ────────────────────────────────────────────────────────────────
     download_root: str = "/downloads"
     movie_strm_root: str = "/movies"
-    series_strm_root: str = "/shows"
+    series_strm_root: str = "/series"
     state_path: str = "appdata/deceptarr/state.json"
     config_path: str = "/config/config.json"
 
@@ -378,7 +378,7 @@ class Settings:
 
         series_strm_root = str(_file_value(file_data, "series_strm_root", "")).strip()
         if not series_strm_root:
-            series_strm_root = _detect_arr_root_folder(sonarr_url, sonarr_api_key) or "/shows"
+            series_strm_root = _detect_arr_root_folder(sonarr_url, sonarr_api_key) or "/series"
 
         download_root = str(_file_value(file_data, "download_root", "")).strip()
         if not download_root:
