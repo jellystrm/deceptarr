@@ -18,11 +18,12 @@ def _file_value(data: dict[str, Any], key: str, default: Any) -> Any:
     return default if value is None else value
 
 
-def _bool_value(data: dict[str, Any], key: str, env_name: str, default: bool) -> bool:
+def _value(data: dict[str, Any], key: str, env_name: str, default: Any) -> Any:
+    """env var → config file → hardcoded default."""
     raw = os.getenv(env_name)
-    if raw is not None:
-        return raw.strip().lower() in {"1", "true", "yes", "on"}
-    return bool(_file_value(data, key, default))
+    if raw is not None and raw.strip() != "":
+        return raw
+    return _file_value(data, key, default)
 
 
 def _int_value(data: dict[str, Any], key: str, env_name: str, default: int) -> int:
@@ -33,21 +34,21 @@ def _int_value(data: dict[str, Any], key: str, env_name: str, default: int) -> i
     return int(raw)
 
 
-def _list_value(data: dict[str, Any], key: str, env_name: str, default: list[str]) -> list[str]:
-    raw_env = os.getenv(env_name)
-    if raw_env is not None and raw_env.strip() != "":
-        return [part.strip() for part in raw_env.split(",") if part.strip()]
+def _bool_value(data: dict[str, Any], key: str, env_name: str, default: bool) -> bool:
+    raw = os.getenv(env_name)
+    if raw is not None:
+        return raw.strip().lower() in {"1", "true", "yes", "on"}
+    return bool(_file_value(data, key, default))
+
+
+def _list_file_value(data: dict[str, Any], key: str, default: list[str]) -> list[str]:
+    """Read a list from config file only (no env override)."""
     raw = _file_value(data, key, default)
     if isinstance(raw, str):
-        return [part.strip() for part in raw.split(",") if part.strip()]
-    return [str(part).strip() for part in raw if str(part).strip()]
-
-
-def _value(data: dict[str, Any], key: str, env_name: str, default: Any) -> Any:
-    raw = os.getenv(env_name)
-    if raw is not None and raw.strip() != "":
-        return raw
-    return _file_value(data, key, default)
+        return [p.strip() for p in raw.split(",") if p.strip()]
+    if isinstance(raw, list):
+        return [str(p).strip() for p in raw if str(p).strip()]
+    return list(default)
 
 
 # ─── Constants ─────────────────────────────────────────────────────────────────
@@ -86,7 +87,7 @@ _SERVICE_ALIVE_PATH: dict[str, str] = {
     "jellyfin": "/System/Info/Public",
 }
 
-_REQUEST_TIMEOUT: float = 1.0
+_REQUEST_TIMEOUT: float = 1.5
 
 
 # ─── ffmpeg auto-detection ────────────────────────────────────────────────────
@@ -100,18 +101,13 @@ def detect_ffmpeg() -> tuple[str, bool]:
     3. ``/usr/bin/ffmpeg``
     4. ``/usr/local/bin/ffmpeg``
 
-    Returns ``(path, found)``.  When *found* is ``False`` the caller should refuse to
-    start and print the install instructions.
+    Returns ``(path, found)``.
     """
-    # 1. Explicit env override
     env_path = os.getenv("FFMPEG_PATH", "").strip()
     if env_path:
         if _ffmpeg_ok(env_path):
             return env_path, True
-        # env is set but binary not found → fall through, still search candidates
-        # but log a warning below
 
-    # 2-4. Candidate list
     for candidate in _FFMPEG_CANDIDATES:
         if _ffmpeg_ok(candidate):
             return candidate, True
@@ -164,10 +160,7 @@ def _detect_public_base_url(
     jellyfin_url: str,
     ui_port: int,
 ) -> str:
-    """Derive PUBLIC_BASE_URL from reachable service hostnames.
-
-    Priority: Radarr host → Sonarr host → Jellyfin host → ``127.0.0.1``.
-    """
+    """Derive PUBLIC_BASE_URL from reachable service hostnames."""
     hosts: list[str] = []
     for svc_url in (radarr_url, sonarr_url, jellyfin_url):
         if svc_url:
@@ -182,6 +175,52 @@ def _detect_public_base_url(
             chosen = h
             break
     return f"http://{chosen}:{ui_port}"
+
+
+# ─── Arr path auto-detection ──────────────────────────────────────────────────
+
+def _detect_arr_root_folder(service_url: str, api_key: str) -> str:
+    """Return the first root folder path from Radarr or Sonarr, or ``""``."""
+    if not service_url or not api_key:
+        return ""
+    try:
+        resp = requests.get(
+            f"{service_url.rstrip('/')}/api/v3/rootfolder",
+            headers={"X-Api-Key": api_key, "Accept": "application/json"},
+            timeout=3,
+        )
+        if resp.status_code == 200:
+            folders = resp.json()
+            if folders and isinstance(folders, list):
+                path = folders[0].get("path", "")
+                return path.rstrip("/") if path else ""
+    except Exception:
+        pass
+    return ""
+
+
+def _detect_download_root(service_url: str, api_key: str) -> str:
+    """Query Radarr/Sonarr download client config and return the savePath, or ``""``."""
+    if not service_url or not api_key:
+        return ""
+    try:
+        resp = requests.get(
+            f"{service_url.rstrip('/')}/api/v3/downloadclient",
+            headers={"X-Api-Key": api_key, "Accept": "application/json"},
+            timeout=3,
+        )
+        if resp.status_code == 200:
+            clients = resp.json()
+            if isinstance(clients, list):
+                for client in clients:
+                    for fld in client.get("fields", []):
+                        if fld.get("name") == "savePath":
+                            path = fld.get("value", "")
+                            if path:
+                                return str(path).rstrip("/")
+    except Exception:
+        pass
+    return ""
 
 
 # ─── TORZNAB_API_KEY lifecycle ─────────────────────────────────────────────────
@@ -204,11 +243,10 @@ class Settings:
     jellyfin_api_key: str = ""
 
     # ── Storage ────────────────────────────────────────────────────────────────
-    # Default paths - download_root is derived from Radarr/Sonarr when available
-    download_root: str = ""
+    download_root: str = "/downloads"
     movie_strm_root: str = "/movies"
     series_strm_root: str = "/shows"
-    state_path: str = "/config/state.json"
+    state_path: str = "appdata/deceptarr/state.json"
     config_path: str = "/config/config.json"
 
     # ── UI ─────────────────────────────────────────────────────────────────────
@@ -234,8 +272,8 @@ class Settings:
     # ── Auth ───────────────────────────────────────────────────────────────────
     torznab_api_key: str = ""
     public_base_url: str = ""
-    qb_username: str = ""
-    qb_password: str = ""
+    qb_username: str = "admin"
+    qb_password: str = "adminadmin"
 
     # ── External ───────────────────────────────────────────────────────────────
     tmdb_api_key: str = ""
@@ -254,10 +292,7 @@ class Settings:
     source_order: list[str] = field(default_factory=lambda: ["kkphim", "ophim", "nguonc"])
 
     def resolve_ffmpeg(self) -> str:
-        """Return the ffmpeg binary path, auto-detecting if not yet resolved.
-
-        Raises ``RuntimeError`` with an install hint when ffmpeg cannot be found.
-        """
+        """Return the ffmpeg binary path, auto-detecting if not yet resolved."""
         if self.ffmpeg_path and shutil.which(self.ffmpeg_path):
             return self.ffmpeg_path
         detected, found = detect_ffmpeg()
@@ -278,12 +313,24 @@ class Settings:
 
         ui_port = _int_value(file_data, "ui_port", "UI_PORT", 8765)
 
-        # ── Auto-probe service URLs from host network ─────────────────────────────
-        radarr_url = _detect_service_url("radarr")
-        sonarr_url = _detect_service_url("sonarr")
-        jellyfin_url = _detect_service_url("jellyfin")
+        # ── API keys: file / UI only, no env override ─────────────────────────
+        radarr_api_key  = str(_file_value(file_data, "radarr_api_key",  ""))
+        sonarr_api_key  = str(_file_value(file_data, "sonarr_api_key",  ""))
+        jellyfin_api_key = str(_file_value(file_data, "jellyfin_api_key", ""))
+        tmdb_api_key    = str(_file_value(file_data, "tmdb_api_key",    ""))
 
-        # ── Auto-detect PUBLIC_BASE_URL ─────────────────────────────────────────
+        # ── Service URLs: config file → auto-probe network ─────────────────────
+        radarr_url = str(_file_value(file_data, "radarr_url", "")).strip().rstrip("/")
+        if not radarr_url:
+            radarr_url = _detect_service_url("radarr")
+        sonarr_url = str(_file_value(file_data, "sonarr_url", "")).strip().rstrip("/")
+        if not sonarr_url:
+            sonarr_url = _detect_service_url("sonarr")
+        jellyfin_url = str(_file_value(file_data, "jellyfin_url", "")).strip().rstrip("/")
+        if not jellyfin_url:
+            jellyfin_url = _detect_service_url("jellyfin")
+
+        # ── PUBLIC_BASE_URL: env → file → auto-detect ──────────────────────────
         raw_public = str(_value(file_data, "public_base_url", "PUBLIC_BASE_URL", "")).strip()
         if not raw_public:
             raw_public = _detect_public_base_url(radarr_url, sonarr_url, jellyfin_url, ui_port)
@@ -295,14 +342,15 @@ class Settings:
         if not raw_torznab_key:
             raw_torznab_key = _generate_torznab_key()
 
-        # ── download_root: env → file → default ────────────────────────────────
-        download_root = os.getenv("DOWNLOAD_ROOT", "").strip()
-        if not download_root:
-            download_root = str(_file_value(file_data, "download_root", ""))
-        if not download_root:
-            download_root = "/downloads"
+        # ── QB credentials: env (default admin/adminadmin) → file ─────────────
+        qb_username = os.getenv("QB_USERNAME", "").strip()
+        if not qb_username:
+            qb_username = str(_file_value(file_data, "qb_username", "admin"))
+        qb_password = os.getenv("QB_PASSWORD", "").strip()
+        if not qb_password:
+            qb_password = str(_file_value(file_data, "qb_password", "adminadmin"))
 
-        # ── ffmpeg_extra_args: use defaults unless set in file ───────────────────
+        # ── ffmpeg ─────────────────────────────────────────────────────────────
         file_ffmpeg_args = _file_value(file_data, "ffmpeg_extra_args", None)
         if file_ffmpeg_args is not None:
             if isinstance(file_ffmpeg_args, str):
@@ -311,43 +359,46 @@ class Settings:
                 ffmpeg_extra_args = [str(a) for a in file_ffmpeg_args]
         else:
             ffmpeg_extra_args = list(_FFMPEG_EXTRA_DEFAULTS)
-
-        # ── ffmpeg_path: only from file (no env fallback) ───────────────────────
         ffmpeg_path = str(_file_value(file_data, "ffmpeg_path", "")).strip()
 
-        # ── hls_template_sources: HLS_TEMPLATE_SOURCES_JSON env → file ───────────
-        raw_hls_env = os.getenv("HLS_TEMPLATE_SOURCES_JSON", "").strip()
-        if raw_hls_env:
-            try:
-                env_templates = json.loads(raw_hls_env)
-                hls_template_sources = env_templates if isinstance(env_templates, list) else []
-            except Exception:
-                hls_template_sources = []
-        else:
-            hls_template_sources = _file_value(file_data, "hls_template_sources", [])
-            if not isinstance(hls_template_sources, list):
-                hls_template_sources = []
+        # ── hls_template_sources: file only, no env ────────────────────────────
+        hls_template_sources = _file_value(file_data, "hls_template_sources", [])
+        if not isinstance(hls_template_sources, list):
+            hls_template_sources = []
 
-        # ── source_order: SOURCE_ORDER env (comma-sep) → file ──────────────────
-        raw_order_env = os.getenv("SOURCE_ORDER", "").strip()
-        if raw_order_env:
-            source_order: list[str] = [s.strip() for s in raw_order_env.split(",") if s.strip()]
-        else:
-            source_order = _file_value(file_data, "source_order", ["kkphim", "ophim", "nguonc"])
-            if not isinstance(source_order, list):
-                source_order = ["kkphim", "ophim", "nguonc"]
+        # ── source_order: file only ────────────────────────────────────────────
+        source_order = _file_value(file_data, "source_order", ["kkphim", "ophim", "nguonc"])
+        if not isinstance(source_order, list):
+            source_order = ["kkphim", "ophim", "nguonc"]
+
+        # ── Storage paths: config file → auto-detect from Arr → fallback ──────
+        movie_strm_root = str(_file_value(file_data, "movie_strm_root", "")).strip()
+        if not movie_strm_root:
+            movie_strm_root = _detect_arr_root_folder(radarr_url, radarr_api_key) or "/movies"
+
+        series_strm_root = str(_file_value(file_data, "series_strm_root", "")).strip()
+        if not series_strm_root:
+            series_strm_root = _detect_arr_root_folder(sonarr_url, sonarr_api_key) or "/shows"
+
+        download_root = str(_file_value(file_data, "download_root", "")).strip()
+        if not download_root:
+            download_root = (
+                _detect_download_root(radarr_url, radarr_api_key)
+                or _detect_download_root(sonarr_url, sonarr_api_key)
+                or "/downloads"
+            )
 
         return Settings(
             radarr_url=radarr_url,
-            radarr_api_key=str(_value(file_data, "radarr_api_key", "RADARR_API_KEY", "")),
+            radarr_api_key=radarr_api_key,
             sonarr_url=sonarr_url,
-            sonarr_api_key=str(_value(file_data, "sonarr_api_key", "SONARR_API_KEY", "")),
+            sonarr_api_key=sonarr_api_key,
             jellyfin_url=jellyfin_url,
-            jellyfin_api_key=str(_value(file_data, "jellyfin_api_key", "JELLYFIN_API_KEY", "")),
-            download_root=str(download_root),
-            movie_strm_root=str(_value(file_data, "movie_strm_root", "MOVIE_STRM_ROOT", "/movies")),
-            series_strm_root=str(_value(file_data, "series_strm_root", "SERIES_STRM_ROOT", "/shows")),
-            state_path=str(_value(file_data, "state_path", "STATE_PATH", "/config/state.json")),
+            jellyfin_api_key=jellyfin_api_key,
+            download_root=download_root,
+            movie_strm_root=movie_strm_root,
+            series_strm_root=series_strm_root,
+            state_path=str(_file_value(file_data, "state_path", "appdata/deceptarr/state.json")),
             config_path=config_path,
             ui_enabled=_bool_value(file_data, "ui_enabled", "UI_ENABLED", True),
             ui_host=str(_value(file_data, "ui_host", "UI_HOST", "0.0.0.0")),
@@ -356,25 +407,25 @@ class Settings:
             max_items_per_poll=_int_value(file_data, "max_items_per_poll", "MAX_ITEMS_PER_POLL", 20),
             retry_after_seconds=_int_value(file_data, "retry_after_seconds", "RETRY_AFTER_SECONDS", 86400),
             run_once=_bool_value(file_data, "run_once", "RUN_ONCE", False),
-            worker_enabled=_bool_value(file_data, "worker_enabled", "WORKER_ENABLED", True),
-            movie_enabled=_bool_value(file_data, "movie_enabled", "MOVIE_ENABLED", True),
-            series_enabled=_bool_value(file_data, "series_enabled", "SERIES_ENABLED", True),
-            default_output_mode=str(_value(file_data, "default_output_mode", "DEFAULT_OUTPUT_MODE", "strm")),
-            expose_both_modes=_bool_value(file_data, "expose_both_modes", "EXPOSE_BOTH_MODES", False),
+            worker_enabled=bool(_file_value(file_data, "worker_enabled", True)),
+            movie_enabled=bool(_file_value(file_data, "movie_enabled", True)),
+            series_enabled=bool(_file_value(file_data, "series_enabled", True)),
+            default_output_mode=str(_file_value(file_data, "default_output_mode", "strm")),
+            expose_both_modes=bool(_file_value(file_data, "expose_both_modes", False)),
             torznab_api_key=raw_torznab_key,
             public_base_url=raw_public,
-            qb_username=str(_value(file_data, "qb_username", "QB_USERNAME", "")),
-            qb_password=str(_value(file_data, "qb_password", "QB_PASSWORD", "")),
-            tmdb_api_key=str(_value(file_data, "tmdb_api_key", "TMDB_API_KEY", "")),
-            jellyfin_scan_after_strm=_bool_value(file_data, "jellyfin_scan_after_strm", "JELLYFIN_SCAN_AFTER_STRM", False),
-            download_container=str(_value(file_data, "download_container", "DOWNLOAD_CONTAINER", "mkv")),
-            import_mode=str(_value(file_data, "import_mode", "IMPORT_MODE", "Move")),
+            qb_username=qb_username,
+            qb_password=qb_password,
+            tmdb_api_key=tmdb_api_key,
+            jellyfin_scan_after_strm=bool(_file_value(file_data, "jellyfin_scan_after_strm", False)),
+            download_container=str(_file_value(file_data, "download_container", "mkv")),
+            import_mode=str(_file_value(file_data, "import_mode", "Move")),
             ffmpeg_path=ffmpeg_path,
             ffmpeg_extra_args=ffmpeg_extra_args,
-            log_level=str(_value(file_data, "log_level", "LOG_LEVEL", "INFO")),
-            job_detail_retention_hours=_int_value(file_data, "job_detail_retention_hours", "JOB_DETAIL_RETENTION_HOURS", 24),
-            server_labels=_list_value(file_data, "server_labels", "SERVER_LABELS", ["ViệtSub", "Lồng Tiếng"]),
-            torznab_group_sources=_bool_value(file_data, "torznab_group_sources", "TORZNAB_GROUP_SOURCES", False),
+            log_level=str(_file_value(file_data, "log_level", "INFO")),
+            job_detail_retention_hours=int(_file_value(file_data, "job_detail_retention_hours", 24)),
+            server_labels=_list_file_value(file_data, "server_labels", ["ViệtSub", "Lồng Tiếng"]),
+            torznab_group_sources=bool(_file_value(file_data, "torznab_group_sources", False)),
             hls_template_sources=hls_template_sources,  # type: ignore[arg-type]
             source_order=source_order,
         )

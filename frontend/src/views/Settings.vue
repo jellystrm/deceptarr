@@ -17,6 +17,8 @@
         <Check label="Movie monitoring enabled" v-model="cfg.movie_enabled" />
         <Field label="Poll interval (s)" v-model.number="cfg.poll_interval_seconds" type="number" />
         <Field label="Max items per poll" v-model.number="cfg.max_items_per_poll" type="number" />
+        <Field label="Movie .strm root (auto-detected from Radarr root folder)" v-model="cfg.movie_strm_root" placeholder="/movies" />
+        <p class="hint">Leave blank to auto-detect from Radarr root folder on each start.</p>
       </template>
 
       <!-- Sonarr -->
@@ -27,6 +29,8 @@
         <Check label="Series monitoring enabled" v-model="cfg.series_enabled" />
         <Field label="Poll interval (s)" v-model.number="cfg.poll_interval_seconds" type="number" />
         <Field label="Max items per poll" v-model.number="cfg.max_items_per_poll" type="number" />
+        <Field label="Series .strm root (auto-detected from Sonarr root folder)" v-model="cfg.series_strm_root" placeholder="/shows" />
+        <p class="hint">Leave blank to auto-detect from Sonarr root folder on each start.</p>
       </template>
 
       <!-- Jellyfin -->
@@ -84,6 +88,8 @@
         <Field label="UI Port" v-model.number="cfg.ui_port" type="number" />
         <Field label="qBittorrent Username" v-model="cfg.qb_username" />
         <Field label="qBittorrent Password" v-model="cfg.qb_password" type="password" />
+        <Field label="Download Root (auto-detected from qBittorrent savePath)" v-model="cfg.download_root" placeholder="/downloads" />
+        <p class="hint">Leave blank to auto-detect from Radarr/Sonarr download client on each start.</p>
         <div class="field">
           <label class="label">Log Level</label>
           <select v-model="cfg.log_level">

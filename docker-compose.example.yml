@@ -12,10 +12,11 @@ services:
     ports:
       - "${UI_PORT:-8765}:${UI_PORT:-8765}"
     volumes:
-      - ./config:/config              # settings + state + activity log
-      - ./downloads:/downloads        # must match Radarr/Sonarr download path
-      - ./movies:/movies              # must match Jellyfin movie library path
-      - ./shows:/shows                # must match Jellyfin series library path
+      - ./config:/config              # settings (config.json)
+      - ./appdata:/app/appdata        # state / job store
+      - ./downloads:/downloads        # must match qBittorrent save path
+      - ./movies:/movies              # must match Radarr root folder / Jellyfin library
+      - ./shows:/shows                # must match Sonarr root folder / Jellyfin library
     networks:
       - media
 

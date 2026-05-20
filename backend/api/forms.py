@@ -107,6 +107,7 @@ def form_to_config(form: dict[str, str], current: Settings) -> dict[str, Any]:
         data["movie_enabled"] = "movie_enabled" in form
         data["poll_interval_seconds"] = integer("poll_interval_seconds", current.poll_interval_seconds)
         data["max_items_per_poll"] = integer("max_items_per_poll", current.max_items_per_poll)
+        data["movie_strm_root"] = form.get("movie_strm_root", current.movie_strm_root).strip()
         return data
 
     if section == "sonarr":
@@ -115,6 +116,7 @@ def form_to_config(form: dict[str, str], current: Settings) -> dict[str, Any]:
         data["series_enabled"] = "series_enabled" in form
         data["poll_interval_seconds"] = integer("poll_interval_seconds", current.poll_interval_seconds)
         data["max_items_per_poll"] = integer("max_items_per_poll", current.max_items_per_poll)
+        data["series_strm_root"] = form.get("series_strm_root", current.series_strm_root).strip()
         return data
 
     if section == "worker":
@@ -171,6 +173,7 @@ def form_to_config(form: dict[str, str], current: Settings) -> dict[str, Any]:
         data["ui_port"] = integer("ui_port", current.ui_port)
         data["qb_username"] = form.get("qb_username", current.qb_username)
         data["qb_password"] = form.get("qb_password", current.qb_password)
+        data["download_root"] = form.get("download_root", current.download_root).strip()
         data["log_level"] = form.get("log_level", current.log_level).strip() or "INFO"
         return data
 
