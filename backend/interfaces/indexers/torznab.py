@@ -1,15 +1,135 @@
 from __future__ import annotations
 
 import hashlib
+import re
+import threading
+import time
 from email.utils import formatdate
 from html import escape as xml_escape
 
 from backend.adapters.tmdb import TmdbClient
 from backend.adapters.tvmaze import TVMazeClient
 from backend.application.grab_service import encode_release
-from backend.domain.models import GatewayRelease, OutputMode
+from backend.domain.models import EpisodeWanted, GatewayRelease, MovieWanted, OutputMode
 from backend.infrastructure.activity import ActivityLog
 from backend.infrastructure.config import Settings
+
+# ── Source availability cache ────────────────────────────────────────────────
+# key → (monotonic_ts, available_source_names | None)
+# None means the check timed out / errored → caller should fall back to all sources.
+_src_cache: dict[str, tuple[float, list[str] | None]] = {}
+_src_cache_lock = threading.Lock()
+_SRC_CACHE_TTL = 300.0   # 5 minutes
+_SRC_CHECK_TIMEOUT = 6.0  # per-source probe timeout (seconds)
+
+
+def _available_sources(
+    settings: Settings,
+    title: str,
+    kind: str,
+    tmdb_id: int | None,
+    tvdb_id: int | None,
+    season: int | None,
+    episode: int | None,
+) -> list[str] | None:
+    """Probe all configured sources in parallel and return those that have the content.
+
+    Return values:
+    - ``[source, ...]``  — sources confirmed to have the content (may be empty list
+                           if all sources completed but none found anything).
+    - ``None``           — at least one probe timed out; caller should fall back to
+                           the full source_order so we don't silently hide content.
+
+    Results are cached for 5 minutes at season-level granularity so all per-episode
+    requests inside the same season share a single round of HTTP checks.
+    """
+    if not settings.source_order:
+        return []
+
+    # Can't verify without a real title (test/caps queries, unresolved IDs)
+    placeholder = re.match(r"^(TMDB|TVDB|VN Source)\s*\d*$", title.strip())
+    if not title or placeholder:
+        return None  # fall back: show all sources
+
+    id_part = str(tmdb_id or tvdb_id or re.sub(r"[^a-z0-9]", "", title.lower())[:40])
+    cache_key = f"{kind}:{id_part}:{season or ''}"
+
+    now = time.monotonic()
+    with _src_cache_lock:
+        hit = _src_cache.get(cache_key)
+        if hit and now - hit[0] < _SRC_CACHE_TTL:
+            return hit[1]
+
+    from backend.sources import build_sources
+
+    sources_map = build_sources(settings.hls_template_sources, tmdb_api_key=settings.tmdb_api_key)
+    check_season  = season  or 1
+    check_episode = episode or 1
+
+    found: list[str] = []
+    found_lock = threading.Lock()
+    completed: set[str] = set()
+    completed_lock = threading.Lock()
+
+    def probe(source_name: str) -> None:
+        source_obj = sources_map.get(source_name)
+        if not source_obj:
+            with completed_lock:
+                completed.add(source_name)
+            return
+        try:
+            if kind == "movie":
+                wanted: MovieWanted | EpisodeWanted = MovieWanted(
+                    radarr_id=0, title=title, year=None,
+                    tmdb_id=tmdb_id, imdb_id=None,
+                )
+                result = source_obj.resolve_movie(wanted)  # type: ignore[arg-type]
+            else:
+                wanted = EpisodeWanted(
+                    sonarr_episode_id=0, series_id=0, series_title=title,
+                    episode_title="", year=None,
+                    tmdb_id=tmdb_id, tvdb_id=tvdb_id, imdb_id=None,
+                    season_number=check_season, episode_number=check_episode,
+                )
+                result = source_obj.resolve_episode(wanted)  # type: ignore[arg-type]
+            if result:
+                with found_lock:
+                    found.append(source_name)
+        except Exception:
+            pass
+        finally:
+            with completed_lock:
+                completed.add(source_name)
+
+    threads = [
+        threading.Thread(target=probe, args=(name,), daemon=True)
+        for name in settings.source_order
+    ]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join(timeout=_SRC_CHECK_TIMEOUT)
+
+    any_timeout = any(t.is_alive() for t in threads)
+    # Preserve source_order ordering
+    ordered = [s for s in settings.source_order if s in found]
+
+    # If any source timed out and we found nothing, we can't trust the result —
+    # return None so the caller falls back to showing all sources.
+    result: list[str] | None
+    if any_timeout and not ordered:
+        result = None
+    else:
+        result = ordered
+
+    with _src_cache_lock:
+        _src_cache[cache_key] = (now, result)
+        if len(_src_cache) > 500:   # prune stale entries
+            cutoff = now - _SRC_CACHE_TTL
+            for k in [k for k, v in _src_cache.items() if v[0] < cutoff]:
+                _src_cache.pop(k, None)
+
+    return result
 
 
 def caps_response() -> str:
@@ -106,13 +226,28 @@ def build_releases(settings: Settings, query: dict[str, list[str]]) -> list[Gate
     # Server labels: empty list means no server distinction (single label "")
     server_labels: list[str] = settings.server_labels if settings.server_labels else [""]
 
-    # Source list: None = auto-select from source_order at grab time (grouped mode)
+    # ── Source list: verify which sources actually have this content ───────────
+    # _available_sources() probes all configured sources in parallel (≤6 s).
+    # Returns None on timeout → fall back to showing all sources so we don't
+    # silently hide content that exists but was slow to respond.
+    if not settings.source_order:
+        return []  # no sources configured
+
     if settings.torznab_group_sources:
+        # Legacy grouped mode: skip verification, let grab service auto-select.
         source_list: list[str | None] = [None]
-    elif not settings.source_order:
-        return []  # no sources configured → nothing to offer
     else:
-        source_list = list(settings.source_order)
+        verified = _available_sources(
+            settings, title, kind, tmdb_id, tvdb_id, season, episode
+        )
+        if verified is None:
+            # Couldn't verify (timeout / placeholder title) → show all sources
+            source_list = list(settings.source_order)
+        elif not verified:
+            # All sources completed and none have this content → empty feed
+            return []
+        else:
+            source_list = verified
 
     # ── Season expansion: when season given but no specific episode,
     #    expand to per-episode results so Sonarr tracks each episode individually.
