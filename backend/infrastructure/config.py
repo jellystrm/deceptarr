@@ -319,16 +319,24 @@ class Settings:
         jellyfin_api_key = str(_file_value(file_data, "jellyfin_api_key", ""))
         tmdb_api_key    = str(_file_value(file_data, "tmdb_api_key",    ""))
 
-        # ── Service URLs: config file → auto-probe network ─────────────────────
+        # ── Service URLs: config file → auto-probe network (persist if detected) ─
+        _needs_persist = False
+
         radarr_url = str(_file_value(file_data, "radarr_url", "")).strip().rstrip("/")
         if not radarr_url:
             radarr_url = _detect_service_url("radarr")
+            if radarr_url:
+                _needs_persist = True
         sonarr_url = str(_file_value(file_data, "sonarr_url", "")).strip().rstrip("/")
         if not sonarr_url:
             sonarr_url = _detect_service_url("sonarr")
+            if sonarr_url:
+                _needs_persist = True
         jellyfin_url = str(_file_value(file_data, "jellyfin_url", "")).strip().rstrip("/")
         if not jellyfin_url:
             jellyfin_url = _detect_service_url("jellyfin")
+            if jellyfin_url:
+                _needs_persist = True
 
         # ── PUBLIC_BASE_URL: env → file → auto-detect ──────────────────────────
         raw_public = str(_value(file_data, "public_base_url", "PUBLIC_BASE_URL", "")).strip()
@@ -336,7 +344,6 @@ class Settings:
             raw_public = _detect_public_base_url(radarr_url, sonarr_url, jellyfin_url, ui_port)
 
         # ── TORZNAB_API_KEY: env → file → auto-generate (persist if generated) ───
-        _needs_persist = False
         raw_torznab_key = os.getenv("TORZNAB_API_KEY", "").strip()
         if not raw_torznab_key:
             raw_torznab_key = str(_file_value(file_data, "torznab_api_key", "")).strip()

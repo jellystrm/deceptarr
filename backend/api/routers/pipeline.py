@@ -15,6 +15,13 @@ log = logging.getLogger(__name__)
 router = APIRouter()
 
 
+@router.get("/api/config")
+def config_get() -> JSONResponse:
+    """Return the current resolved settings as a flat JSON object."""
+    settings = Settings.load()
+    return JSONResponse(settings.to_config_dict())
+
+
 @router.get("/api/pipeline")
 def pipeline() -> JSONResponse:
     """Native job list — richer than /api/jobs (qBit format)."""
