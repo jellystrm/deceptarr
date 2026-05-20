@@ -10,7 +10,9 @@ from vn_source_gateway.interfaces.indexers.torznab import build_releases, caps_r
 
 @pytest.fixture
 def settings() -> Settings:
-    return Settings.load()
+    from dataclasses import replace
+    # Use grouped mode so tests produce results even with no sources configured
+    return replace(Settings.load(), torznab_group_sources=True)
 
 
 class TestCaps:

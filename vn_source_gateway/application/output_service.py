@@ -34,13 +34,23 @@ class OutputService:
         return replace(job, status="completed", progress=1.0, save_path=path, hls_url=hit.hls_url)
 
     def download_hls(self, job: GatewayJob, hit: SourceHit) -> GatewayJob:
+        # Per-job container override takes priority over the global setting
+        container = job.release.container or self.settings.download_container
+        downloader = self.downloader
+        if container != self.settings.download_container:
+            downloader = HlsDownloader(
+                self.settings.download_root,
+                self.settings.ffmpeg_path,
+                self.settings.ffmpeg_extra_args,
+                container,
+            )
         movie = self._movie_wanted(job)
         if movie:
-            path = self.downloader.movie_path(movie)
+            path = downloader.movie_path(movie)
         else:
             episode = self._episode_wanted(job)
-            path = self.downloader.episode_path(episode)
-        self.downloader.download(hit, path)
+            path = downloader.episode_path(episode)
+        downloader.download(hit, path)
         return replace(job, status="completed", progress=1.0, save_path=path, hls_url=hit.hls_url)
 
     def strm_path(self, job: GatewayJob) -> str:

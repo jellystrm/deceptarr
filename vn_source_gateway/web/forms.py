@@ -130,9 +130,13 @@ def form_to_config(form: dict[str, str], current: Settings) -> dict[str, Any]:
         templates = json.loads(templates_raw) if templates_raw else []
         if not isinstance(templates, list):
             raise ValueError("HLS template sources must be a JSON array")
-        data["source_order"] = csv("source_order")
-        data["tmdb_api_key"] = form.get("tmdb_api_key", current.tmdb_api_key)
+        # Derive source_order from the order of sources in the list
+        data["source_order"] = [str(s.get("name", "")).strip() for s in templates if s.get("name")]
         data["hls_template_sources"] = templates
+        return data
+
+    if section == "tasks":
+        data["tmdb_api_key"] = form.get("tmdb_api_key", current.tmdb_api_key)
         return data
 
     if section == "runtime":
@@ -188,7 +192,7 @@ def form_to_config(form: dict[str, str], current: Settings) -> dict[str, Any]:
         "job_detail_retention_hours": integer("job_detail_retention_hours", current.job_detail_retention_hours),
         "movie_enabled": "movie_enabled" in form,
         "series_enabled": "series_enabled" in form,
-        "source_order": csv("source_order"),
+        "source_order": [str(s.get("name", "")).strip() for s in templates if s.get("name")],
         "default_output_mode": form.get("default_output_mode", current.default_output_mode).strip() or "strm",
         "expose_both_modes": "expose_both_modes" in form,
         "torznab_api_key": form.get("torznab_api_key", current.torznab_api_key),

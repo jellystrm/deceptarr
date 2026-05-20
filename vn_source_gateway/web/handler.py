@@ -7,7 +7,7 @@ from http.server import BaseHTTPRequestHandler
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from vn_source_gateway.application.grab_service import decode_release, enqueue_from_url
+from vn_source_gateway.application.grab_service import decode_release, encode_release, enqueue_from_url
 from vn_source_gateway.infrastructure.activity import ActivityLog
 from vn_source_gateway.infrastructure.config import Settings, save_settings
 from vn_source_gateway.interfaces.download_clients import qbittorrent
@@ -93,6 +93,10 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
                 else:
                     test_connections(settings)
                 self._redirect("/settings?tab=" + section)
+            elif path == "/api/manual-grab":
+                self._handle_manual_grab()
+            elif path == "/api/source-test":
+                self._handle_source_test()
             elif path == "/tasks/action":
                 form = self._read_form()
                 settings = Settings.load()
@@ -283,6 +287,79 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
                     )
             self._send_text("Ok.\n")
 
+        def _handle_manual_grab(self) -> None:
+            """Queue a release from a grab token with an optional output_mode/container override."""
+            form = self._read_form()
+            settings = Settings.load()
+            token = form.get("token", "").strip()
+            if not token:
+                self.send_error(HTTPStatus.BAD_REQUEST, "Missing token")
+                return
+            try:
+                release = decode_release(token)
+            except Exception:
+                log.warning("manual-grab: invalid token %r", token[:40])
+                self.send_error(HTTPStatus.BAD_REQUEST, "Invalid token")
+                return
+            # Override output_mode and optional container
+            from dataclasses import replace as _replace
+            output_mode = form.get("output_mode", release.output_mode)
+            container = form.get("container") or None
+            new_release = _replace(release, output_mode=output_mode, container=container)  # type: ignore[arg-type]
+            new_token = encode_release(new_release)
+            grab_url = f"{settings.public_base_url}/grab/{new_token}"
+            try:
+                enqueue_from_url(settings, grab_url)
+            except Exception:
+                log.exception("manual-grab: enqueue failed for token=%r", token[:40])
+            accept = self.headers.get("Accept", "")
+            if "text/html" in accept:
+                self._redirect("/dashboard")
+            else:
+                self._send_text("Ok.\n")
+
+        def _handle_source_test(self) -> None:
+            """Test each configured source with a TMDB ID and return JSON results."""
+            length = int(self.headers.get("Content-Length", "0"))
+            body = self.rfile.read(length)
+            try:
+                params = json.loads(body.decode("utf-8"))
+            except Exception:
+                self.send_error(HTTPStatus.BAD_REQUEST, "Invalid JSON")
+                return
+            settings = Settings.load()
+            tmdb_id_raw = params.get("tmdb_id")
+            tmdb_id = int(tmdb_id_raw) if tmdb_id_raw else None
+            media_type = str(params.get("media_type", "movie"))
+            season = int(params.get("season", 1) or 1)
+            episode = int(params.get("episode", 1) or 1)
+
+            from vn_source_gateway.sources import build_sources
+            from vn_source_gateway.domain.models import MovieWanted, EpisodeWanted
+            sources = build_sources(settings.hls_template_sources, tmdb_api_key=settings.tmdb_api_key)
+            results: dict[str, dict] = {}
+            for source_name, source in sources.items():
+                try:
+                    if media_type == "movie":
+                        wanted: MovieWanted | EpisodeWanted = MovieWanted(
+                            radarr_id=0, title="", year=None, tmdb_id=tmdb_id, imdb_id=None
+                        )
+                        hit = source.resolve_movie(wanted)  # type: ignore[arg-type]
+                    else:
+                        wanted = EpisodeWanted(
+                            sonarr_episode_id=0, series_id=0, series_title="", episode_title="",
+                            year=None, tmdb_id=tmdb_id, tvdb_id=None, imdb_id=None,
+                            season_number=season, episode_number=episode,
+                        )
+                        hit = source.resolve_episode(wanted)  # type: ignore[arg-type]
+                    if hit:
+                        results[source_name] = {"status": "ok", "url": hit.hls_url}
+                    else:
+                        results[source_name] = {"status": "error", "message": "Not found"}
+                except Exception as exc:
+                    results[source_name] = {"status": "error", "message": str(exc)[:200]}
+            self._send_json(results)
+
         def _read_form(self) -> dict[str, str]:
             length = int(self.headers.get("Content-Length", "0"))
             body = self.rfile.read(length)
@@ -333,7 +410,9 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
 
 
 def _section_redirect(section: str) -> str:
-    if section in {"radarr", "sonarr", "worker", "indexer", "downloader", "jellyfin"}:
+    if section in {"radarr", "sonarr", "worker", "tasks", "indexer", "downloader", "jellyfin"}:
         return f"/settings?tab={section}"
+    if section == "sources":
+        return "/sources"
     target = SECTION_ALIASES.get(section, section)
     return f"/{target}"

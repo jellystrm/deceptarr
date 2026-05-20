@@ -58,6 +58,7 @@ _DASHBOARD_POLL_JS = r"""
   }
 
   setInterval(refresh, INTERVAL);
+  refresh(); // scan immediately on page load
 
   // Intercept task-action form submits (Retry / Pause / Resume / Delete).
   // POST via fetch so only #pipeline updates — no full-page reload, no
@@ -85,6 +86,7 @@ SECTION_ALIASES = {
     "radarr": "settings",
     "sonarr": "settings",
     "worker": "settings",
+    "tasks": "settings",
     "indexer": "settings",
     "downloader": "settings",
     "jellyfin": "settings",
@@ -101,6 +103,7 @@ def render_page(settings: Settings, message: str, section: str, settings_tab: st
             "radarr": "radarr",
             "sonarr": "sonarr",
             "worker": "worker",
+            "tasks": "tasks",
             "indexer": "indexer",
             "downloader": "downloader",
             "jellyfin": "jellyfin",
@@ -193,7 +196,7 @@ def _section_card(
     if section == "dashboard":
         return _pipeline_card(settings), False
     if section == "sources":
-        return sources_card(config, templates, source_order), True
+        return sources_card(config, templates, source_order), False  # manages its own form
     if section == "settings":
         return settings_card(config, ffmpeg_args, settings_tab), False
     return _pipeline_card(settings), False
@@ -285,31 +288,65 @@ def _indexer_card(settings: Settings) -> str:
             dot = "ok" if ev.status == "ok" else "err"
             # results count part: "5 result(s) — sources: ophim" → "5 result(s)"
             results_part = ev.detail.split(" — ")[0] if " — " in ev.detail else ev.detail
-            # Collapsible result list
-            result_items = getattr(ev, "results", []) or []
+            # Collapsible result list with per-grab download buttons
+            ev_grabs = getattr(ev, "grabs", []) or []
             ev_url = getattr(ev, "url", "") or ""
-            if result_items:
-                items_html = "".join(
-                    f"<div style='font-size:12px;padding:3px 0;border-bottom:1px solid var(--border);color:var(--text)'>"
-                    f"{html.escape(t)}</div>"
-                    for t in result_items
-                )
-                link_html = (
-                    f"<div style='margin-top:6px'>"
-                    f"<a href='{html.escape(ev_url)}' target='_blank' style='font-size:11px;color:var(--accent)'>"
-                    f"↗ open XML</a></div>"
-                ) if ev_url else ""
+            link_html = (
+                f"<div style='margin-top:6px'>"
+                f"<a href='{html.escape(ev_url)}' target='_blank' style='font-size:11px;color:var(--accent)'>↗ open XML</a>"
+                f"</div>"
+            ) if ev_url else ""
+            if ev_grabs:
+                # Deduplicate by title (keep first of each mode — prefer strm for display)
+                shown_grabs = ev_grabs[:40]  # cap at 40 items
+                overflow = len(ev_grabs) - len(shown_grabs)
+                grab_rows = ""
+                for g in shown_grabs:
+                    tok = html.escape(g.get("token", ""), quote=True)
+                    title_short = g.get("title", "")
+                    # Strip mode suffix "[STRM]" / "[HLS-DL]" for display
+                    for suf in (" [STRM]", " [HLS-DL]"):
+                        if title_short.endswith(suf):
+                            title_short = title_short[:-len(suf)]
+                            break
+                    grab_rows += (
+                        f"<div style='display:flex;align-items:center;gap:6px;padding:3px 0;"
+                        f"border-bottom:1px solid var(--border);font-size:11px'>"
+                        f"<span style='flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;"
+                        f"white-space:nowrap;color:var(--text)'>{html.escape(title_short)}</span>"
+                        f"<form method='post' action='/api/manual-grab' class='task-actions' style='display:inline;margin:0'>"
+                        f"<input type='hidden' name='token' value='{tok}'>"
+                        f"<input type='hidden' name='output_mode' value='strm'>"
+                        f"<button type='submit' class='btn btn-ghost btn-small' style='font-size:10px;padding:1px 5px'>STRM</button>"
+                        f"</form>"
+                        f"<form method='post' action='/api/manual-grab' class='task-actions' style='display:inline;margin:0'>"
+                        f"<input type='hidden' name='token' value='{tok}'>"
+                        f"<input type='hidden' name='output_mode' value='download'>"
+                        f"<input type='hidden' name='container' value='mkv'>"
+                        f"<button type='submit' class='btn btn-ghost btn-small' style='font-size:10px;padding:1px 5px'>MKV</button>"
+                        f"</form>"
+                        f"<form method='post' action='/api/manual-grab' class='task-actions' style='display:inline;margin:0'>"
+                        f"<input type='hidden' name='token' value='{tok}'>"
+                        f"<input type='hidden' name='output_mode' value='download'>"
+                        f"<input type='hidden' name='container' value='mp4'>"
+                        f"<button type='submit' class='btn btn-ghost btn-small' style='font-size:10px;padding:1px 5px'>MP4</button>"
+                        f"</form>"
+                        f"</div>"
+                    )
+                if overflow > 0:
+                    grab_rows += f"<div style='font-size:11px;color:var(--muted);padding:3px 0'>…and {overflow} more</div>"
                 results_detail = (
                     f"<details class='pipe-detail'>"
                     f"<summary>{html.escape(results_part)}</summary>"
-                    f"<div style='margin-top:6px;padding:8px 12px;background:rgba(0,0,0,0.2);border-radius:6px;border:1px solid var(--border)'>"
-                    f"{items_html}{link_html}</div></details>"
+                    f"<div style='margin-top:6px;padding:8px 12px;background:rgba(0,0,0,0.2);"
+                    f"border-radius:6px;border:1px solid var(--border)'>"
+                    f"{grab_rows}{link_html}</div></details>"
                 )
             else:
-                link_html = (
+                no_link = (
                     f" <a href='{html.escape(ev_url)}' target='_blank' style='font-size:11px;color:var(--accent)'>↗</a>"
                 ) if ev_url else ""
-                results_detail = f"<span style='color:var(--muted);font-size:12px'>{html.escape(results_part)}{link_html}</span>"
+                results_detail = f"<span style='color:var(--muted);font-size:12px'>{html.escape(results_part)}{no_link}</span>"
             rows.append(
                 "<tr>"
                 f"<td style='color:var(--muted);font-size:11px;white-space:nowrap;padding:8px 10px'>{html.escape(age)}</td>"
