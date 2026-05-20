@@ -305,7 +305,7 @@ def _fetch_season_episode_numbers(
     - Empty list → caller keeps season-pack behaviour (no per-episode expansion).
     """
     # ── TVDB-aligned path: prefer TVMaze ──────────────────────────────────────
-    if tvdb_id is not None:
+    if tvdb_id:
         try:
             eps = TVMazeClient().get_season_episodes(tvdb_id, season)
             if eps:
