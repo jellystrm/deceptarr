@@ -1,57 +1,121 @@
 <template>
   <div>
+    <div class="page-head">
+      <div>
+        <h1>Downloads</h1>
+        <p class="sub">Active and queued tasks. Progress, status and on-disk path live here.</p>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <button class="btn" @click="load">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+          Refresh
+        </button>
+      </div>
+    </div>
+
     <div class="toolbar">
-      <button class="btn-sm" @click="bulk('resume_all')">▶ Resume All</button>
-      <button class="btn-sm" @click="bulk('pause_all')">⏸ Pause All</button>
-      <div class="sep" />
-      <button class="btn-sm" @click="bulk('clear_done')">✕ Clear Done</button>
-      <div class="sep" />
-      <button class="btn-sm ml-auto" @click="load">↺ Refresh</button>
+      <div class="group">
+        <button class="btn" @click="bulk('resume_all')">
+          <svg viewBox="0 0 24 24" fill="var(--green)" stroke="none"><polygon points="6 4 20 12 6 20"/></svg>
+          Resume all
+        </button>
+        <button class="btn" @click="bulk('pause_all')">
+          <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+          Pause all
+        </button>
+        <button class="btn" @click="bulk('clear_done')">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          Clear done
+        </button>
+      </div>
+      <div class="divider"></div>
+      <div class="group">
+        <span class="filter-tag">All <b>{{ jobs.length }}</b></span>
+        <span class="filter-tag green-v">Running <b>{{ counts.running }}</b></span>
+        <span class="filter-tag red-v">Errors <b>{{ counts.error }}</b></span>
+      </div>
     </div>
 
-    <div class="statusbar">
-      <span class="stat">Total: <b>{{ jobs.length }}</b></span>
-      <span class="stat">Running: <b style="color:var(--green)">{{ counts.running }}</b></span>
-      <span class="stat">Errors: <b style="color:var(--red)">{{ counts.error }}</b></span>
-      <span class="stat">Done: <b>{{ counts.completed }}</b></span>
+    <!-- Empty state -->
+    <div v-if="!jobs.length" class="empty-state">
+      <h3>No download tasks yet</h3>
+      <p>When a source resolves to a stream, it shows up here with live progress and status.</p>
     </div>
 
-    <div v-if="!jobs.length" class="empty">No jobs.</div>
-
-    <table v-else class="tbl">
-      <thead>
-        <tr><th>Title</th><th>Mode</th><th>Status</th><th>Progress</th><th style="width:110px"></th></tr>
-      </thead>
-      <tbody>
-        <tr v-for="j in jobs" :key="j.id" :class="['job-row', j.status]">
-          <td class="title-cell">
-            <span class="kind-badge">{{ j.kind === 'movie' ? '🎬' : '📺' }}</span>
-            {{ j.title }}
-            <span v-if="j.kind === 'episode' && j.season" class="ep-tag">
-              S{{ String(j.season).padStart(2,'0') }}E{{ String(j.episode).padStart(2,'0') }}
-            </span>
-            <div v-if="j.error" class="err-msg">{{ j.error }}</div>
-            <div v-if="j.save_path && j.status === 'completed'" class="save-path">{{ j.save_path }}</div>
-          </td>
-          <td class="xs muted">{{ j.output_mode }}</td>
-          <td>
-            <span :class="['status-dot', j.status]" />
-            <span class="xs">{{ j.status }}</span>
-          </td>
-          <td style="min-width:100px">
-            <div class="progress-bar"><div class="progress-fill" :style="{ width: (j.progress * 100).toFixed(0) + '%' }" /></div>
-            <span class="xs muted">{{ (j.progress * 100).toFixed(0) }}%</span>
-          </td>
-          <td class="actions-cell">
-            <button v-if="j.status === 'paused' || j.status === 'error' || j.status === 'queued'"
-              class="act-btn green" title="Resume" @click="act('resume', j.id)">▶</button>
-            <button v-if="j.status === 'running' || j.status === 'queued'"
-              class="act-btn" title="Pause" @click="act('pause', j.id)">⏸</button>
-            <button class="act-btn red" title="Delete" @click="act('delete', j.id)">✕</button>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <!-- Table -->
+    <div v-else class="card">
+      <table class="table">
+        <thead>
+          <tr>
+            <th>Title</th>
+            <th style="width:260px">Progress</th>
+            <th>Mode</th>
+            <th>Status</th>
+            <th style="width:80px"></th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr v-for="j in jobs" :key="j.id">
+            <td>
+              <div class="row-flex">
+                <div class="thumb">{{ j.kind === 'movie' ? '🎬' : '📺' }}</div>
+                <div>
+                  <div class="row-title">
+                    {{ j.title }}
+                    <span v-if="j.kind === 'episode' && j.season" class="ep-tag">
+                      S{{ String(j.season).padStart(2,'0') }}E{{ String(j.episode ?? 0).padStart(2,'0') }}
+                    </span>
+                  </div>
+                  <div v-if="j.error" class="row-sub" style="color:var(--red)">{{ j.error }}</div>
+                  <div v-else-if="j.save_path && j.status === 'completed'" class="row-sub" style="color:var(--green)">
+                    Done · {{ j.save_path }}
+                  </div>
+                </div>
+              </div>
+            </td>
+            <td>
+              <div :class="['prog', progColor(j.status)]">
+                <div class="prog-bar"><span :style="{ width: (j.progress * 100).toFixed(0) + '%' }"></span></div>
+                <div class="prog-meta">
+                  <span class="a">{{ (j.progress * 100).toFixed(0) }}%</span>
+                  <span>{{ j.status }}</span>
+                </div>
+              </div>
+            </td>
+            <td>
+              <span class="pill gray" style="font-family:var(--font-mono);font-size:10px">{{ j.output_mode }}</span>
+            </td>
+            <td>
+              <span :class="['pill', statusPill(j.status)]">{{ j.status }}</span>
+            </td>
+            <td class="right" style="white-space:nowrap">
+              <button
+                v-if="j.status === 'paused' || j.status === 'error' || j.status === 'queued'"
+                class="icon-mini" title="Resume"
+                @click="act('resume', j.id)"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><polygon points="6 4 20 12 6 20"/></svg>
+              </button>
+              <button
+                v-if="j.status === 'running' || j.status === 'queued'"
+                class="icon-mini" title="Pause"
+                @click="act('pause', j.id)"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="5" width="4" height="14" rx="1"/><rect x="14" y="5" width="4" height="14" rx="1"/></svg>
+              </button>
+              <button class="icon-mini danger" title="Delete" @click="act('delete', j.id)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="card-foot">
+        <span style="font-size:12.5px;color:var(--text-3)">
+          {{ jobs.length }} tasks · {{ counts.running }} running · {{ counts.error }} errors · {{ counts.completed }} done
+        </span>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -82,49 +146,35 @@ async function bulk(action: 'resume_all' | 'pause_all' | 'clear_done') {
   await load()
 }
 
+function statusPill(status: string) {
+  if (status === 'running')   return 'green'
+  if (status === 'completed') return 'teal'
+  if (status === 'error')     return 'red'
+  if (status === 'paused')    return 'amber'
+  return 'gray'
+}
+
+function progColor(status: string) {
+  if (status === 'error')  return 'red'
+  if (status === 'paused') return 'amber'
+  if (status === 'completed') return ''
+  return ''
+}
+
 onMounted(() => { load(); timer = setInterval(load, 5000) })
 onUnmounted(() => clearInterval(timer))
 </script>
 
 <style scoped>
-.toolbar { display:flex; align-items:center; gap:6px; margin-bottom:12px; flex-wrap:wrap; }
-.btn-sm {
-  background:var(--surface); border:1px solid var(--border); border-radius:4px;
-  color:var(--text); font-size:12px; padding:5px 12px; cursor:pointer;
+.ep-tag {
+  font-size: 10px; font-family: var(--font-mono);
+  background: var(--border); border-radius: 4px;
+  padding: 1px 5px; margin-left: 5px; color: var(--text-3);
 }
-.btn-sm:hover { border-color:var(--accent); color:var(--accent); }
-.sep { width:1px; height:20px; background:var(--border); margin:0 2px; }
-.ml-auto { margin-left:auto; }
-.statusbar { display:flex; gap:16px; font-size:12px; color:var(--muted); margin-bottom:14px; }
-.stat b { font-weight:600; color:var(--text-bright); }
-.empty { color:var(--muted); font-size:13px; padding:32px 0; text-align:center; }
-.tbl { width:100%; border-collapse:collapse; font-size:13px; }
-.tbl th { font-size:11px; color:var(--muted); padding:6px 10px; border-bottom:1px solid var(--border); text-align:left; }
-.tbl td { padding:7px 10px; border-bottom:1px solid var(--border); vertical-align:middle; }
-.job-row:hover td { background:rgba(255,255,255,.02); }
-.title-cell { max-width:360px; }
-.kind-badge { font-size:14px; margin-right:4px; }
-.ep-tag { font-size:10px; background:var(--border); border-radius:3px; padding:1px 5px; margin-left:4px; color:var(--muted); }
-.err-msg { font-size:11px; color:var(--red); margin-top:2px; white-space:normal; word-break:break-all; }
-.save-path { font-size:10px; color:var(--muted); margin-top:2px; word-break:break-all; }
-.xs { font-size:11px; }
-.muted { color:var(--muted); }
-.status-dot {
-  display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:4px; vertical-align:middle;
+.filter-tag {
+  font-size: 12px; color: var(--text-3); padding: 2px 8px;
 }
-.status-dot.running   { background:var(--accent); }
-.status-dot.completed { background:var(--green); }
-.status-dot.error     { background:var(--red); }
-.status-dot.queued    { background:var(--muted); }
-.status-dot.paused    { background:#e5c07b; }
-.progress-bar { height:4px; background:var(--border); border-radius:2px; margin-bottom:2px; }
-.progress-fill { height:100%; background:var(--accent); border-radius:2px; transition:width .3s; }
-.actions-cell { white-space:nowrap; }
-.act-btn {
-  background:none; border:1px solid var(--border); border-radius:3px;
-  color:var(--muted); font-size:11px; padding:2px 7px; cursor:pointer; margin-right:3px;
-}
-.act-btn:hover { border-color:var(--text); color:var(--text); }
-.act-btn.green:hover { border-color:var(--green); color:var(--green); }
-.act-btn.red:hover   { border-color:var(--red);   color:var(--red); }
+.filter-tag b { font-weight: 600; color: var(--text-2); margin-left: 3px; }
+.filter-tag.green-v b { color: var(--green); }
+.filter-tag.red-v b   { color: var(--red); }
 </style>

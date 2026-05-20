@@ -64,6 +64,15 @@ export interface ActivityEvent {
   grabs: GrabToken[]
 }
 
+// ─── Health ───────────────────────────────────────────────────────────────────
+
+export interface HealthResult {
+  status: 'ok' | 'warn' | 'error' | 'unknown'
+  latency: number | null
+  url: string
+  message?: string
+}
+
 // ─── Config ───────────────────────────────────────────────────────────────────
 
 export type Config = Record<string, unknown>
@@ -105,6 +114,7 @@ export const authSetup       = (username: string, password: string) => post<{ st
 export const authLogin       = (username: string, password: string) => post<{ status: string; error?: string }>('/api/auth/login', { username, password })
 export const authLogout      = () => fetch('/api/auth/logout', { method: 'POST' })
 
+export const getHealth       = ()  => get<Record<string, HealthResult>>('/api/health')
 export const getConfig       = ()  => get<Config>('/api/config')
 export const getPipeline     = ()  => get<PipelineJob[]>('/api/pipeline')
 export const getActivity     = ()  => get<ActivityEvent[]>('/api/activity')

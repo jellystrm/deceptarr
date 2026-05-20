@@ -1,64 +1,129 @@
 <template>
   <div>
+    <div class="page-head">
+      <div>
+        <h1>Sources</h1>
+        <p class="sub">Priority-ordered HLS sources — first match wins. Drag to reorder. Built-ins (kkphim, ophim, nguonc) are always available.</p>
+      </div>
+      <div style="display:flex;gap:8px">
+        <button class="btn ghost" @click="save" :disabled="saving">Discard</button>
+        <button class="btn primary" @click="save" :disabled="saving">
+          {{ saving ? 'Saving…' : 'Save sources' }}
+        </button>
+      </div>
+    </div>
+
     <div class="card">
-      <div class="card-title">Source Priority</div>
-      <div class="card-desc">Drag to reorder. The worker tries sources top-to-bottom.</div>
-      <div class="order-list">
-        <div
-          v-for="(src, i) in order"
-          :key="src"
-          class="order-item"
-          draggable="true"
-          @dragstart="dragStart(i)"
-          @dragover.prevent="dragOver(i)"
-          @drop="drop(i)"
-        >
-          <span class="handle">⠿</span>
-          <span class="src-name">{{ src }}</span>
-          <span v-if="builtins.includes(src)" class="badge-builtin">built-in</span>
-          <span v-else class="badge-custom">template</span>
-          <button class="rm-btn" @click="removeOrder(i)">✕</button>
+      <div class="card-head">
+        <div>
+          <h2>Active sources <span style="color:var(--text-3);font-weight:500">· {{ order.length }}</span></h2>
+          <p class="desc">Drag to reorder. First responder wins. Disable without removing via the remove button.</p>
         </div>
-        <div v-if="!order.length" class="empty-order">No sources in order — add built-ins or define templates below.</div>
       </div>
-      <div class="add-row">
-        <select v-model="addName">
-          <option value="">— add source —</option>
-          <option v-for="b in builtins.filter(b => !order.includes(b))" :key="b" :value="b">{{ b }}</option>
-        </select>
-        <button class="btn-sm" @click="addToOrder" :disabled="!addName">Add</button>
+
+      <div class="card-body">
+        <div class="src-list">
+          <div
+            v-for="(src, i) in order"
+            :key="src"
+            class="src"
+            draggable="true"
+            @dragstart="dragStart(i)"
+            @dragover.prevent="dragOver(i)"
+            @drop="drop"
+          >
+            <div class="src-idx">{{ String(i + 1).padStart(2, '0') }}</div>
+            <div class="src-handle">
+              <button title="Move up" @click="moveUp(i)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+              </button>
+              <button title="Move down" @click="moveDown(i)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+            </div>
+            <div>
+              <div class="src-name">
+                {{ src }}
+                <span v-if="i === 0" class="badge teal" style="margin-left:6px">Primary</span>
+              </div>
+              <div class="src-url">{{ sourceUrl(src) }}</div>
+            </div>
+            <span class="badge" :class="builtins.includes(src) ? '' : 'amber'">
+              {{ builtins.includes(src) ? 'Built-in' : 'Custom' }}
+            </span>
+            <div class="src-actions">
+              <button class="icon-mini danger" title="Remove" @click="removeOrder(i)">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div v-if="!order.length" class="empty-order">
+            No sources — add built-ins below.
+          </div>
+        </div>
+
+        <!-- Add source row -->
+        <div class="add-row">
+          <select v-model="addName" class="select" style="max-width:220px">
+            <option value="">— add source —</option>
+            <option v-for="b in availableBuiltins" :key="b" :value="b">{{ b }}</option>
+          </select>
+          <button class="btn" @click="addToOrder" :disabled="!addName">Add</button>
+        </div>
+
+        <!-- Custom template JSON -->
+        <div style="margin-top:20px">
+          <div class="field full">
+            <label>
+              HLS Template Sources
+              <span class="hint">JSON array of custom source definitions</span>
+            </label>
+            <textarea v-model="templatesJson" class="json-area" spellcheck="false" rows="8" />
+            <div v-if="jsonError" class="err-msg-inline">{{ jsonError }}</div>
+          </div>
+        </div>
       </div>
-    </div>
 
-    <div class="card">
-      <div class="card-title">HLS Template Sources</div>
-      <div class="card-desc">JSON array of custom source definitions. See docs for schema.</div>
-      <textarea v-model="templatesJson" class="json-area" spellcheck="false" rows="10" />
-      <div v-if="jsonError" class="err-msg">{{ jsonError }}</div>
-    </div>
-
-    <div class="actions">
-      <button class="btn" @click="save" :disabled="saving">{{ saving ? 'Saving…' : 'Save Sources' }}</button>
-      <span v-if="saved" class="ok-msg">✓ Saved</span>
-      <span v-if="saveError" class="err-msg">{{ saveError }}</span>
+      <div class="card-foot">
+        <span style="font-size:12.5px;color:var(--text-3)">Changes apply on save · resolver cache will be flushed</span>
+        <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
+          <span v-if="saved" style="font-size:12px;color:var(--green)">✓ Saved</span>
+          <span v-if="saveError" style="font-size:12px;color:var(--red)">{{ saveError }}</span>
+          <button class="btn primary sm" @click="save" :disabled="saving">
+            {{ saving ? 'Saving…' : 'Save sources' }}
+          </button>
+        </div>
+      </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import { getConfig, saveSettings } from '../api'
 
 const BUILTINS = ['kkphim', 'ophim', 'nguonc']
-const builtins = ref<string[]>(BUILTINS)
+const BUILTIN_URLS: Record<string, string> = {
+  kkphim: 'https://phimapi.com',
+  ophim:  'https://ophim17.cc',
+  nguonc: 'https://phim.nguonc.com',
+}
 
-const order = ref<string[]>([])
+const builtins    = ref<string[]>(BUILTINS)
+const order       = ref<string[]>([])
 const templatesJson = ref('[]')
-const jsonError = ref('')
-const saving = ref(false)
-const saved = ref(false)
-const saveError = ref('')
-const addName = ref('')
+const jsonError   = ref('')
+const saving      = ref(false)
+const saved       = ref(false)
+const saveError   = ref('')
+const addName     = ref('')
+
+const availableBuiltins = computed(() => builtins.value.filter(b => !order.value.includes(b)))
+
+function sourceUrl(name: string): string {
+  return BUILTIN_URLS[name] || 'custom source'
+}
 
 let drag = -1
 
@@ -71,11 +136,22 @@ function dragOver(i: number) {
   order.value = arr
   drag = i
 }
-function drop(i: number) { drag = -1 }
+function drop() { drag = -1 }
 
-function removeOrder(i: number) {
-  order.value.splice(i, 1)
+function moveUp(i: number) {
+  if (i === 0) return
+  const arr = [...order.value];
+  [arr[i - 1], arr[i]] = [arr[i], arr[i - 1]]
+  order.value = arr
 }
+function moveDown(i: number) {
+  if (i >= order.value.length - 1) return
+  const arr = [...order.value];
+  [arr[i], arr[i + 1]] = [arr[i + 1], arr[i]]
+  order.value = arr
+}
+
+function removeOrder(i: number) { order.value.splice(i, 1) }
 
 function addToOrder() {
   if (addName.value && !order.value.includes(addName.value)) {
@@ -120,14 +196,12 @@ async function save() {
 onMounted(async () => {
   try {
     const cfg = await getConfig()
-    const src = (cfg.source_order as string[] | undefined) || []
-    order.value = [...src]
+    order.value = [...((cfg.source_order as string[] | undefined) || [])]
     const tpl = cfg.hls_template_sources
     templatesJson.value = JSON.stringify(tpl, null, 2)
-    // Add custom template names that aren't already in built-ins to the add-list
     if (Array.isArray(tpl)) {
       for (const t of tpl) {
-        const name = (t as Record<string,string>).name
+        const name = (t as Record<string, string>).name
         if (name && !BUILTINS.includes(name)) builtins.value = [...new Set([...builtins.value, name])]
       }
     }
@@ -136,45 +210,14 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.card { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:18px 20px; margin-bottom:16px; }
-.card-title { font-size:14px; font-weight:600; color:var(--text-bright); margin-bottom:4px; }
-.card-desc  { font-size:12px; color:var(--muted); margin-bottom:12px; }
-.order-list { display:flex; flex-direction:column; gap:6px; margin-bottom:10px; }
-.order-item {
-  display:flex; align-items:center; gap:8px;
-  background:var(--input-bg); border:1px solid var(--border); border-radius:5px;
-  padding:7px 10px; cursor:grab; user-select:none;
-}
-.order-item:active { cursor:grabbing; }
-.handle { color:var(--muted); font-size:14px; }
-.src-name { font-size:13px; color:var(--text-bright); flex:1; }
-.badge-builtin { font-size:10px; background:rgba(97,175,239,.12); color:var(--accent); border-radius:3px; padding:1px 6px; }
-.badge-custom  { font-size:10px; background:rgba(152,195,121,.12); color:var(--green); border-radius:3px; padding:1px 6px; }
-.rm-btn { background:none; border:none; color:var(--muted); cursor:pointer; font-size:12px; margin-left:auto; padding:0 4px; }
-.rm-btn:hover { color:var(--red); }
-.empty-order { color:var(--muted); font-size:12px; text-align:center; padding:10px 0; }
-.add-row { display:flex; align-items:center; gap:8px; }
-select {
-  background:var(--input-bg); border:1px solid var(--border); border-radius:5px;
-  color:var(--text); padding:5px 8px; font-size:13px; outline:none;
-}
-.btn-sm {
-  background:var(--surface); border:1px solid var(--border); border-radius:4px;
-  color:var(--text); font-size:12px; padding:5px 12px; cursor:pointer;
-}
-.btn-sm:disabled { opacity:.4; cursor:default; }
+.add-row { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
 .json-area {
-  width:100%; background:var(--input-bg); border:1px solid var(--border); border-radius:5px;
-  color:var(--text-bright); padding:10px; font-family:ui-monospace,Menlo,Consolas,monospace;
-  font-size:12px; line-height:1.5; resize:vertical; outline:none;
+  width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); padding: 12px; font-family: var(--font-mono);
+  font-size: 12px; line-height: 1.5; resize: vertical; outline: none;
+  transition: border-color .12s;
 }
-.json-area:focus { border-color:var(--accent); }
-.actions { display:flex; align-items:center; gap:10px; }
-.btn {
-  background:var(--accent); color:#1e2127; font-weight:600; font-size:13px;
-  border:none; border-radius:5px; padding:8px 20px; cursor:pointer;
-}
-.btn:disabled { opacity:.5; cursor:default; }
-.ok-msg  { font-size:12px; color:var(--green); }
-.err-msg { font-size:12px; color:var(--red); }
+.json-area:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(94,224,189,.12); }
+.empty-order { color: var(--text-3); font-size: 12px; text-align: center; padding: 16px 0; }
+.err-msg-inline { font-size: 12px; color: var(--red); margin-top: 4px; }
 </style>

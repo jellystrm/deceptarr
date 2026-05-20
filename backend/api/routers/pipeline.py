@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import logging
+import time
 
 from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
@@ -13,6 +15,43 @@ from backend.api.forms import form_to_config
 
 log = logging.getLogger(__name__)
 router = APIRouter()
+
+
+@router.get("/api/health")
+async def health_check() -> JSONResponse:
+    """Probe all external services and return status/latency for each."""
+    import requests as req_lib  # already in requirements.txt
+
+    settings = Settings.load()
+    services: dict[str, str] = {
+        "radarr":  settings.radarr_url  or "",
+        "sonarr":  settings.sonarr_url  or "",
+        "jellyfin":settings.jellyfin_url or "",
+        "kkphim":  "https://phimapi.com",
+        "ophim":   "https://ophim17.cc",
+        "nguonc":  "https://phim.nguonc.com",
+    }
+
+    async def probe(name: str, url: str) -> tuple[str, dict]:
+        if not url:
+            return name, {"status": "unknown", "latency": None, "url": ""}
+
+        def _sync() -> dict:
+            t0 = time.monotonic()
+            try:
+                r = req_lib.get(url, timeout=8, allow_redirects=True)
+                ms = round((time.monotonic() - t0) * 1000)
+                status = "ok" if r.status_code < 400 else "warn"
+                return {"status": status, "latency": ms, "url": url}
+            except Exception as exc:
+                return {"status": "error", "latency": None, "url": url,
+                        "message": str(exc)[:120]}
+
+        result = await asyncio.to_thread(_sync)
+        return name, result
+
+    pairs = await asyncio.gather(*[probe(n, u) for n, u in services.items()])
+    return JSONResponse(dict(pairs))
 
 
 @router.get("/api/config")

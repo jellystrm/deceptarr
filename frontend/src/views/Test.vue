@@ -1,151 +1,57 @@
 <template>
   <div>
-    <!-- Source Resolver -->
-    <div class="card" style="margin-bottom: 16px">
-      <div class="card-header">
-        <div class="card-title">Source Resolver</div>
-        <div class="card-desc">Test HLS URL resolution per-source — enter a TMDb ID and check which sources can serve it.</div>
+    <div class="page-head">
+      <div>
+        <h1>Test</h1>
+        <p class="sub">Run integration checks against every external service Deceptarr depends on. Use this after a config change or when something looks off.</p>
       </div>
-      <div class="card-body">
-        <div class="row">
-          <div class="field">
-            <label class="label">TMDb ID</label>
-            <input v-model="sr.tmdbId" type="number" placeholder="27205 (Inception) / 1396 (Breaking Bad)" />
-          </div>
-          <div class="field">
-            <label class="label">Title Override</label>
-            <input v-model="sr.title" placeholder="Optional when TMDB key is empty" />
-          </div>
-          <div class="field">
-            <label class="label">Year</label>
-            <input v-model="sr.year" type="number" placeholder="2010" style="width:90px" />
-          </div>
-          <div class="field">
-            <label class="label">Media Type</label>
-            <select v-model="sr.mediaType">
-              <option value="movie">Movie</option>
-              <option value="tv">TV Series</option>
-            </select>
-          </div>
-          <div v-if="sr.mediaType === 'tv'" class="row" style="gap:8px;flex-wrap:wrap;margin:0">
-            <div class="field">
-              <label class="label">Season</label>
-              <input v-model="sr.season" type="number" min="1" placeholder="1" style="width:80px" />
-            </div>
-            <div class="field">
-              <label class="label">Episode</label>
-              <input v-model="sr.episode" type="number" min="1" placeholder="all" style="width:80px" />
-            </div>
-            <div class="field">
-              <label class="label">TVDb ID</label>
-              <input v-model="sr.tvdbId" type="number" placeholder="optional" style="width:110px" />
-            </div>
-          </div>
+      <button class="btn primary" :disabled="running" @click="runChecks">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        {{ running ? 'Running…' : 'Run all tests' }}
+      </button>
+    </div>
+
+    <!-- Health tiles -->
+    <div class="test-grid">
+      <div
+        v-for="tile in tiles"
+        :key="tile.name"
+        class="test-tile"
+        @click="runSingle(tile.name)"
+      >
+        <div class="test-tile-head">
+          <span class="name">{{ tile.label }}</span>
+          <span :class="['dot', tile.dotClass]"></span>
         </div>
-        <div class="actions">
-          <button class="btn" :disabled="sr.loading" @click="resolve">
-            {{ sr.loading ? 'Resolving…' : '▶ Resolve' }}
-          </button>
-        </div>
-        <div class="results">
-          <p v-if="sr.loading" class="muted">{{ scanMsg }}…</p>
-          <table v-else-if="sr.results" class="tbl">
-            <tbody>
-              <tr v-for="(r, name) in sr.results" :key="name">
-                <td class="name">{{ name }}</td>
-                <td><span :class="['dot', r.status === 'ok' ? 'ok' : 'err']" /></td>
-                <td>
-                  <template v-if="r.status === 'ok'">
-                    <template v-if="r.episodes">
-                      <div class="muted xs">Found {{ r.found }}/{{ r.total }} episodes</div>
-                      <a
-                        v-for="ep in r.episodes.filter(e => e.url)"
-                        :key="ep.num"
-                        :href="ep.url!"
-                        target="_blank"
-                        class="ep-link"
-                      >E{{ String(ep.num).padStart(2, '0') }}</a>
-                      <span v-if="!r.found" class="red xs">No episodes found</span>
-                    </template>
-                    <template v-else>
-                      <div v-for="(u, i) in (r.urls || [{ url: r.url, server: '', name: '' }])" :key="i" class="url-row">
-                        <span v-if="u.server || u.name" class="muted xs">{{ [u.server, u.name].filter(Boolean).join(' / ') }} </span>
-                        <a :href="u.url" target="_blank" class="url-link">{{ i + 1 }}. {{ (u.url || '').slice(0, 120) }}{{ (u.url?.length ?? 0) > 120 ? '…' : '' }}</a>
-                      </div>
-                    </template>
-                  </template>
-                  <span v-else class="red xs">{{ r.message || 'Not found' }}</span>
-                  <details v-if="r.log?.length" class="log-details">
-                    <summary class="muted xs pointer">trace log</summary>
-                    <div class="log-block">
-                      <div v-for="(line, i) in r.log" :key="i">{{ line }}</div>
-                    </div>
-                  </details>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <span class="desc">
+          <template v-if="tile.status === 'loading'">checking…</template>
+          <template v-else-if="tile.status === 'ok'">{{ tile.url }} · {{ tile.latency }}ms</template>
+          <template v-else-if="tile.status === 'warn'">{{ tile.url }} · {{ tile.latency }}ms (slow)</template>
+          <template v-else-if="tile.status === 'error'">{{ tile.message || 'unreachable' }}</template>
+          <template v-else>click to test</template>
+        </span>
       </div>
     </div>
 
-    <!-- Torznab Tester -->
+    <!-- Run log -->
     <div class="card">
-      <div class="card-header">
-        <div class="card-title">Torznab Query Tester</div>
-        <div class="card-desc">Simulate the exact HTTP request Radarr/Sonarr sends — inspect titles and grab URLs.</div>
+      <div class="card-head">
+        <div>
+          <h2>Run output <span style="color:var(--text-3);font-weight:500">{{ lastRun ? '· ' + lastRun : '' }}</span></h2>
+          <p class="desc">Combined log from the last full test pass.</p>
+        </div>
+        <div style="display:flex;gap:6px">
+          <button class="btn ghost sm" @click="clearLog">Clear</button>
+        </div>
       </div>
-      <div class="card-body">
-        <div class="row">
-          <div class="field">
-            <label class="label">API Key</label>
-            <input v-model="tz.apiKey" />
+      <div class="card-body" style="padding:14px 16px">
+        <div class="testlog" ref="logEl">
+          <div v-if="!logLines.length" class="l-info">
+            <span class="ts">—</span>No tests run yet. Click "Run all tests" to start.
           </div>
-          <div class="field">
-            <label class="label">Type (t=)</label>
-            <select v-model="tz.type">
-              <option value="movie">movie — Radarr</option>
-              <option value="tvsearch">tvsearch — Sonarr</option>
-            </select>
+          <div v-for="(line, i) in logLines" :key="i" :class="line.cls">
+            <span class="ts">{{ line.ts }}</span>{{ line.text }}
           </div>
-        </div>
-        <div v-if="tz.type === 'movie'" class="row">
-          <div class="field"><label class="label">Title (q=)</label><input v-model="tz.q" placeholder="Inception" /></div>
-          <div class="field"><label class="label">Year</label><input v-model="tz.year" type="number" placeholder="2010" /></div>
-          <div class="field"><label class="label">TMDb ID</label><input v-model="tz.tmdbId" type="number" placeholder="27205" /></div>
-          <div class="field"><label class="label">IMDb ID</label><input v-model="tz.imdbId" placeholder="tt1375666" /></div>
-        </div>
-        <div v-else class="row">
-          <div class="field"><label class="label">Series Title (q=)</label><input v-model="tz.q" placeholder="Breaking Bad" /></div>
-          <div class="field"><label class="label">TVDb ID</label><input v-model="tz.tvdbId" type="number" placeholder="81189" /></div>
-          <div class="field"><label class="label">TMDb ID</label><input v-model="tz.tmdbId" type="number" placeholder="1396" /></div>
-          <div class="field"><label class="label">Season</label><input v-model="tz.season" type="number" value="1" min="1" style="width:80px" /></div>
-          <div class="field"><label class="label">Episode</label><input v-model="tz.ep" type="number" value="1" min="1" style="width:80px" /></div>
-        </div>
-        <div style="margin-bottom:14px">
-          <div class="label" style="margin-bottom:6px">Request URL</div>
-          <code class="url-preview">{{ torznabUrl }}</code>
-        </div>
-        <div class="actions">
-          <button class="btn" :disabled="tz.loading" @click="tzSearch">
-            {{ tz.loading ? 'Searching…' : '▶ Send' }}
-          </button>
-        </div>
-        <div class="results">
-          <p v-if="tz.loading" class="muted">Searching…</p>
-          <p v-else-if="tz.error" class="red xs">{{ tz.error }}</p>
-          <table v-else-if="tz.items.length" class="tbl">
-            <thead><tr><th>Title</th><th>TMDb ID</th><th>Size</th><th>Grab URL</th></tr></thead>
-            <tbody>
-              <tr v-for="item in tz.items" :key="item.title">
-                <td class="xs" style="max-width:340px">{{ item.title }}</td>
-                <td class="muted xs">{{ item.tmdbid || '—' }}</td>
-                <td class="muted xs">{{ item.size ? Math.round(item.size / 1048576) + ' MB' : '—' }}</td>
-                <td><a v-if="item.link" :href="item.link" target="_blank" class="url-link">{{ item.link.slice(0, 100) }}{{ item.link.length > 100 ? '…' : '' }}</a><span v-else class="muted">—</span></td>
-              </tr>
-            </tbody>
-          </table>
-          <p v-else-if="tz.searched" class="muted">No results returned.</p>
         </div>
       </div>
     </div>
@@ -153,176 +59,123 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from 'vue'
-import { sourceTest, torznabSearch, getConfig } from '../api'
+import { ref, reactive, nextTick, onMounted } from 'vue'
+import { getHealth, type HealthResult } from '../api'
 
-const sr = reactive({
-  tmdbId: '' as string | number,
-  title: '',
-  year: '' as string | number,
-  mediaType: 'movie' as 'movie' | 'tv',
-  season: '' as string | number,
-  episode: '' as string | number,
-  tvdbId: '' as string | number,
-  loading: false,
-  results: null as Record<string, import('../api').SourceResult> | null,
-})
+interface Tile {
+  name: string
+  label: string
+  url: string
+  status: 'idle' | 'loading' | 'ok' | 'warn' | 'error' | 'unknown'
+  dotClass: string
+  latency: number | null
+  message: string
+}
 
-const tz = reactive({
-  apiKey: '',
-  type: 'movie' as 'movie' | 'tvsearch',
-  q: '',
-  year: '' as string | number,
-  tmdbId: '' as string | number,
-  imdbId: '',
-  tvdbId: '' as string | number,
-  season: 1 as number,
-  ep: 1 as number,
-  loading: false,
-  searched: false,
-  error: '',
-  items: [] as { title: string; tmdbid: string; size: number; link: string }[],
-})
+interface LogLine { cls: string; ts: string; text: string }
 
-const scanMsg = computed(() =>
-  sr.mediaType === 'tv' && sr.season && !sr.episode
-    ? `Scanning all episodes of S${String(sr.season).padStart(2, '0')}`
-    : 'Resolving',
+const SERVICES: { name: string; label: string }[] = [
+  { name: 'radarr',  label: 'Radarr'  },
+  { name: 'sonarr',  label: 'Sonarr'  },
+  { name: 'jellyfin',label: 'Jellyfin'},
+  { name: 'kkphim',  label: 'kkphim'  },
+  { name: 'ophim',   label: 'ophim'   },
+  { name: 'nguonc',  label: 'nguonc'  },
+]
+
+const tiles = reactive<Tile[]>(
+  SERVICES.map(s => ({
+    ...s, url: '', status: 'idle', dotClass: 'gray', latency: null, message: '',
+  }))
 )
 
-const torznabUrl = computed(() => {
-  const p = new URLSearchParams({ t: tz.type, apikey: tz.apiKey })
-  if (tz.q) p.set('q', String(tz.q))
-  if (tz.type === 'movie') {
-    if (tz.year) p.set('year', String(tz.year))
-    if (tz.tmdbId) p.set('tmdbid', String(tz.tmdbId))
-    if (tz.imdbId) p.set('imdbid', tz.imdbId)
+const running  = ref(false)
+const logLines = ref<LogLine[]>([])
+const lastRun  = ref('')
+const logEl    = ref<HTMLElement | null>(null)
+
+function now() {
+  return new Date().toTimeString().slice(0, 8)
+}
+
+function addLog(cls: string, text: string) {
+  logLines.value.push({ cls, ts: now(), text })
+  nextTick(() => {
+    if (logEl.value) logEl.value.scrollTop = logEl.value.scrollHeight
+  })
+}
+
+function clearLog() { logLines.value = [] }
+
+function applyResult(name: string, result: HealthResult) {
+  const tile = tiles.find(t => t.name === name)
+  if (!tile) return
+  tile.url     = result.url || ''
+  tile.latency = result.latency
+  tile.message = result.message || ''
+  tile.status  = result.status
+
+  if (result.status === 'ok') {
+    tile.dotClass = 'green'
+    addLog('l-ok', `${name.padEnd(8)} → ${result.url} · ${result.latency}ms`)
+  } else if (result.status === 'warn') {
+    tile.dotClass = 'amber'
+    addLog('l-warn', `${name.padEnd(8)} → ${result.url} · ${result.latency}ms (slow)`)
+  } else if (result.status === 'error') {
+    tile.dotClass = 'red'
+    addLog('l-err', `${name.padEnd(8)} → ${result.message || 'unreachable'}`)
   } else {
-    if (tz.tvdbId) p.set('tvdbid', String(tz.tvdbId))
-    if (tz.tmdbId) p.set('tmdbid', String(tz.tmdbId))
-    if (tz.season) p.set('season', String(tz.season))
-    if (tz.ep) p.set('ep', String(tz.ep))
-  }
-  return '/torznab/api?' + p.toString()
-})
-
-onMounted(async () => {
-  try {
-    const cfg = await getConfig()
-    tz.apiKey = (cfg.torznab_api_key as string) || ''
-  } catch {}
-})
-
-async function resolve() {
-  if (!sr.tmdbId) { alert('Please enter a TMDb ID'); return }
-  sr.loading = true
-  sr.results = null
-  try {
-    const payload: import('../api').SourceTestRequest = {
-      tmdb_id: Number(sr.tmdbId),
-      media_type: sr.mediaType,
-    }
-    if (sr.title) payload.title = sr.title
-    if (sr.year) payload.year = Number(sr.year)
-    if (sr.mediaType === 'tv') {
-      if (sr.season) payload.season = Number(sr.season)
-      if (sr.episode) payload.episode = Number(sr.episode)
-      if (sr.tvdbId) payload.tvdb_id = Number(sr.tvdbId)
-    }
-    sr.results = await sourceTest(payload)
-  } finally {
-    sr.loading = false
+    tile.dotClass = 'gray'
+    addLog('l-info', `${name.padEnd(8)} → not configured`)
   }
 }
 
-async function tzSearch() {
-  tz.loading = true
-  tz.error = ''
-  tz.items = []
-  tz.searched = false
+async function runChecks() {
+  if (running.value) return
+  running.value = true
+  logLines.value = []
+  lastRun.value = ''
+
+  // Set all tiles to loading
+  tiles.forEach(t => { t.status = 'loading'; t.dotClass = 'gray' })
+  addLog('l-info', 'Starting integration tests…')
+
   try {
-    const p = new URLSearchParams({ t: tz.type, apikey: tz.apiKey })
-    if (tz.q) p.set('q', String(tz.q))
-    if (tz.type === 'movie') {
-      if (tz.year) p.set('year', String(tz.year))
-      if (tz.tmdbId) p.set('tmdbid', String(tz.tmdbId))
-      if (tz.imdbId) p.set('imdbid', tz.imdbId)
-    } else {
-      if (tz.tvdbId) p.set('tvdbid', String(tz.tvdbId))
-      if (tz.tmdbId) p.set('tmdbid', String(tz.tmdbId))
-      if (tz.season) p.set('season', String(tz.season))
-      if (tz.ep) p.set('ep', String(tz.ep))
+    const results = await getHealth()
+    let ok = 0, warn = 0, err = 0
+    for (const [name, result] of Object.entries(results)) {
+      applyResult(name, result)
+      if (result.status === 'ok')      ok++
+      else if (result.status === 'warn') warn++
+      else if (result.status === 'error') err++
     }
-    const xml = await torznabSearch(p)
-    const doc = new DOMParser().parseFromString(xml, 'text/xml')
-    const err = doc.querySelector('error')
-    if (err) { tz.error = err.getAttribute('description') || xml; return }
-    tz.items = Array.from(doc.querySelectorAll('item')).map(item => {
-      const enc = item.querySelector('enclosure')
-      const attrs: Record<string, string> = {}
-      item.querySelectorAll('attr').forEach(a => { attrs[a.getAttribute('name')!] = a.getAttribute('value')! })
-      return {
-        title: item.querySelector('title')?.textContent || '',
-        tmdbid: attrs.tmdbid || '',
-        size: Number(enc?.getAttribute('length') || 0),
-        link: enc?.getAttribute('url') || '',
-      }
-    })
-    tz.searched = true
+    addLog('l-info', `${ok} ok · ${warn} warnings · ${err} errors`)
+    lastRun.value = 'just now'
   } catch (e) {
-    tz.error = String(e)
+    addLog('l-err', `Failed to run health check: ${e}`)
+    tiles.forEach(t => { t.status = 'idle'; t.dotClass = 'gray' })
   } finally {
-    tz.loading = false
+    running.value = false
   }
 }
-</script>
 
-<style scoped>
-.card { background: var(--surface); border: 1px solid var(--border); border-radius: 8px; margin-bottom: 16px; }
-.card-header { padding: 16px 20px 0; }
-.card-title { font-weight: 600; font-size: 15px; color: var(--text-bright); margin-bottom: 4px; }
-.card-desc { font-size: 12px; color: var(--muted); margin-bottom: 12px; }
-.card-body { padding: 16px 20px 20px; }
-.row { display: flex; flex-wrap: wrap; gap: 12px; margin-bottom: 14px; }
-.field { display: flex; flex-direction: column; gap: 4px; }
-.label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
-input, select {
-  background: var(--input-bg); border: 1px solid var(--border); border-radius: 5px;
-  color: var(--text-bright); padding: 6px 10px; font-size: 13px; outline: none;
-  min-width: 140px;
+async function runSingle(name: string) {
+  const tile = tiles.find(t => t.name === name)
+  if (!tile) return
+  tile.status = 'loading'; tile.dotClass = 'gray'
+  addLog('l-info', `Testing ${name}…`)
+  try {
+    const results = await getHealth()
+    const result = results[name]
+    if (result) applyResult(name, result)
+  } catch (e) {
+    tile.status = 'error'; tile.dotClass = 'red'
+    addLog('l-err', `${name} → ${e}`)
+  }
 }
-input:focus, select:focus { border-color: var(--accent); }
-.actions { margin-bottom: 16px; }
-.btn {
-  background: var(--accent); color: #1e2127; font-weight: 600; font-size: 13px;
-  border: none; border-radius: 5px; padding: 7px 18px; cursor: pointer;
-}
-.btn:disabled { opacity: .5; cursor: default; }
-.results { min-height: 32px; }
-.tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
-.tbl th, .tbl td { padding: 5px 10px; border-bottom: 1px solid var(--border); text-align: left; }
-.tbl th { color: var(--muted); font-size: 11px; }
-.dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; }
-.dot.ok { background: var(--green); }
-.dot.err { background: var(--red); }
-.name { font-weight: 500; font-size: 12px; white-space: nowrap; }
-.muted { color: var(--muted); }
-.red { color: var(--red); }
-.xs { font-size: 11px; }
-.pointer { cursor: pointer; }
-.ep-link { font-size: 11px; color: var(--accent); margin-right: 6px; }
-.url-row { padding: 1px 0; }
-.url-link { font-size: 11px; color: var(--accent); word-break: break-all; }
-.log-details { margin-top: 6px; }
-.log-block {
-  margin-top: 6px; background: var(--input-bg); border: 1px solid var(--border);
-  border-radius: 5px; padding: 8px 10px;
-  font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 11px;
-  line-height: 1.4; color: var(--muted);
-}
-.url-preview {
-  display: block; background: var(--input-bg); border: 1px solid var(--border);
-  border-radius: 5px; padding: 8px 12px; font-size: 12px; word-break: break-all;
-  color: var(--accent); min-height: 36px;
-}
-</style>
+
+onMounted(() => {
+  // Auto-run on mount so tiles show current state
+  runChecks()
+})
+</script>

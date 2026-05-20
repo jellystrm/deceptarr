@@ -44,6 +44,7 @@ async function submit() {
   try {
     const res = await authLogin(username.value.trim(), password.value)
     if (res.status === 'ok') {
+      localStorage.setItem('deceptarr_user', username.value.trim())
       const next = (route.query.next as string) || '/downloads'
       router.replace(next)
     } else {
@@ -60,33 +61,46 @@ async function submit() {
 <style scoped>
 .auth-wrap {
   min-height: 100vh; display: flex; align-items: center; justify-content: center;
-  background: var(--bg);
+  background:
+    radial-gradient(1200px 600px at 0% 0%, rgba(94,224,189,.05), transparent 60%),
+    radial-gradient(900px 600px at 100% 100%, rgba(245,166,35,.04), transparent 60%),
+    var(--bg);
 }
 .auth-card {
   width: 100%; max-width: 360px;
-  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
-  padding: 32px 28px; display: flex; flex-direction: column; gap: 14px;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 14px;
+  padding: 32px 28px; display: flex; flex-direction: column; gap: 16px;
+  box-shadow: 0 24px 60px -12px rgba(0,0,0,.6);
 }
 .auth-logo { display: flex; align-items: center; gap: 10px; margin-bottom: 4px; }
 .brand-icon {
-  width: 30px; height: 30px; border-radius: 7px; background: var(--accent);
-  color: #1e2127; font-weight: 700; font-size: 16px;
+  width: 36px; height: 36px; border-radius: 10px;
+  background: linear-gradient(135deg, #ffb840 0%, #f5a623 50%, #d68910 100%);
+  color: #0d1218; font-weight: 700; font-size: 20px;
   display: flex; align-items: center; justify-content: center;
+  box-shadow: 0 1px 0 rgba(255,255,255,.3) inset, 0 6px 18px -4px rgba(245,166,35,.5);
+  flex-shrink: 0;
 }
-.brand-name { font-size: 17px; font-weight: 700; color: var(--text-bright); }
-h2 { font-size: 15px; font-weight: 600; color: var(--text-bright); margin: 0; }
-.field { display: flex; flex-direction: column; gap: 5px; }
-.field label { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+.brand-name { font-size: 17px; font-weight: 700; color: var(--text); }
+h2 { font-size: 15px; font-weight: 600; color: var(--text); margin: 0; }
+.field { display: flex; flex-direction: column; gap: 7px; }
+.field label { font-size: 12px; font-weight: 600; color: var(--text-2); }
 .field input {
-  background: var(--input-bg); border: 1px solid var(--border); border-radius: 6px;
-  color: var(--text-bright); padding: 8px 11px; font-size: 13px; outline: none;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); padding: 10px 12px; font-size: 14px; outline: none;
+  font-family: var(--font-sans); transition: border-color .12s;
 }
-.field input:focus { border-color: var(--accent); }
+.field input:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(94,224,189,.12); }
 .btn {
-  margin-top: 4px; background: var(--accent); color: #1e2127; font-weight: 700;
-  font-size: 13px; border: none; border-radius: 6px; padding: 9px; cursor: pointer;
-  width: 100%;
+  margin-top: 4px;
+  background: linear-gradient(180deg, #ffb840, #f5a623);
+  border: 1px solid #d68910; color: #1a1208; font-weight: 700;
+  font-size: 13px; border-radius: 8px; padding: 10px; cursor: pointer;
+  width: 100%; font-family: var(--font-sans);
+  box-shadow: 0 1px 0 rgba(255,255,255,.3) inset, 0 4px 12px -2px rgba(245,166,35,.35);
+  transition: filter .12s;
 }
-.btn:disabled { opacity: .5; cursor: default; }
-.err-msg { font-size: 12px; color: var(--red); background: rgba(224,108,117,.1); border-radius: 5px; padding: 8px 10px; }
+.btn:hover { filter: brightness(1.05); }
+.btn:disabled { opacity: .5; cursor: default; filter: none; }
+.err-msg { font-size: 12px; color: var(--red); background: var(--red-soft); border-radius: 7px; padding: 8px 10px; border: 1px solid rgba(255,107,107,.2); }
 </style>
