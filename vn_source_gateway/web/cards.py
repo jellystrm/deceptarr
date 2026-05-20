@@ -22,36 +22,33 @@ def _option(value: str, selected: object) -> str:
 
 
 def _poll_fields(prefix: str, config: dict[str, Any]) -> str:
-    """Collapsible poll-interval + max-items fields, toggled by a 'poll enabled' checkbox.
-
-    ``prefix`` is "movie" or "series" so the toggle JS ID is unique per card.
-    """
+    """Poll enable checkbox + interval/max fields. Fields grey-out when polling is disabled."""
     enabled_field = "movie_enabled" if prefix == "movie" else "series_enabled"
     is_enabled = bool(config.get(enabled_field, False))
     disabled = "" if is_enabled else " disabled"
-    opacity = "" if is_enabled else " style='opacity:.45;pointer-events:none'"
+    wrap_opacity = "" if is_enabled else " style='opacity:0.4'"
+    media_label = "movies" if prefix == "movie" else "series"
+    # Single-line JS keeps the attribute simple; toggles disabled + opacity on sibling div
+    js = (
+        f"var w=document.getElementById('pf-{prefix}');"
+        f"w.style.opacity=this.checked?'':'0.4';"
+        f"w.querySelectorAll('input').forEach(function(i){{i.disabled=!this.checked}},this)"
+    )
     return f"""
         <div class="checks" style="margin-bottom:10px">
           <label class="check-item">
-            <input type="checkbox" name="{enabled_field}" id="chk-{prefix}-enabled"
-              {_checked(is_enabled)}
-              onchange="(function(c){{
-                var wrap=document.getElementById('poll-fields-{prefix}');
-                wrap.style.opacity=c.checked?'1':'0.45';
-                wrap.style.pointerEvents=c.checked?'':'none';
-                wrap.querySelectorAll('input,select').forEach(function(i){{i.disabled=!c.checked}});
-              }})(this)">
-            Poll {prefix}s
+            <input type="checkbox" name="{enabled_field}" {_checked(is_enabled)} onchange="{js}">
+            Poll {media_label}
           </label>
         </div>
-        <div id="poll-fields-{prefix}"{opacity}>
+        <div id="pf-{prefix}"{wrap_opacity}>
           <div class="row">
             <div class="field"><label class="field-label">Poll Interval (seconds)</label>
               <input name="poll_interval_seconds" type="number" min="10"{disabled}
-                value="{_attr(config["poll_interval_seconds"])}"></div>
+                value="{_attr(config['poll_interval_seconds'])}"></div>
             <div class="field"><label class="field-label">Max Items Per Poll</label>
               <input name="max_items_per_poll" type="number" min="1"{disabled}
-                value="{_attr(config["max_items_per_poll"])}"></div>
+                value="{_attr(config['max_items_per_poll'])}"></div>
           </div>
         </div>"""
 
