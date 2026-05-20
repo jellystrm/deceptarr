@@ -7,7 +7,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from backend.infrastructure.activity import ActivityLog
-from backend.infrastructure.config import Settings, save_settings
+from backend.infrastructure.config import Settings, save_settings, _generate_torznab_key
 from backend.infrastructure.jobs import JobStore
 from backend.api.forms import form_to_config
 
@@ -20,6 +20,17 @@ def config_get() -> JSONResponse:
     """Return the current resolved settings as a flat JSON object."""
     settings = Settings.load()
     return JSONResponse(settings.to_config_dict())
+
+
+@router.post("/api/regen-torznab-key")
+def regen_torznab_key() -> JSONResponse:
+    """Generate a new Torznab API key, persist it, and return it."""
+    settings = Settings.load()
+    new_key = _generate_torznab_key()
+    config_data = settings.to_config_dict()
+    config_data["torznab_api_key"] = new_key
+    save_settings(config_data, settings.config_path)
+    return JSONResponse({"torznab_api_key": new_key})
 
 
 @router.get("/api/pipeline")

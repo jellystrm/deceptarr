@@ -75,7 +75,17 @@
       <!-- Indexer -->
       <template v-if="active === 'indexer'">
         <h2>Torznab Indexer</h2>
-        <Field label="API Key" v-model="cfg.torznab_api_key" />
+        <div class="field">
+          <label class="label">API Key</label>
+          <div class="key-row">
+            <input type="text" :value="cfg.torznab_api_key" readonly class="key-input" />
+            <button class="icon-btn" :class="{ copied: keyCopied }" title="Copy" @click="copyKey">
+              {{ keyCopied ? '✓' : '⎘' }}
+            </button>
+            <button class="icon-btn regen" title="Regenerate" :disabled="keyRegen" @click="regenKey">↻</button>
+          </div>
+          <p class="hint" style="margin-top:4px">Paste this key into Radarr / Sonarr → Settings → Indexers → Torznab.</p>
+        </div>
         <Field label="Public Base URL" v-model="cfg.public_base_url" placeholder="http://deceptarr:8765" />
         <Field label="Server Labels (comma-separated)" v-model="serverLabels" placeholder="ViệtSub, Lồng Tiếng" />
         <Check label="Group results by source" v-model="cfg.torznab_group_sources" />
@@ -175,6 +185,26 @@ const cfg = ref<Record<string, any>>({})
 const saving = ref(false)
 const saved = ref(false)
 const saveError = ref('')
+const keyCopied = ref(false)
+const keyRegen = ref(false)
+
+async function copyKey() {
+  try {
+    await navigator.clipboard.writeText(String(cfg.value.torznab_api_key || ''))
+    keyCopied.value = true
+    setTimeout(() => { keyCopied.value = false }, 1800)
+  } catch {}
+}
+
+async function regenKey() {
+  keyRegen.value = true
+  try {
+    const res = await fetch('/api/regen-torznab-key', { method: 'POST' })
+    const data = await res.json()
+    cfg.value.torznab_api_key = data.torznab_api_key
+  } catch {}
+  finally { keyRegen.value = false }
+}
 
 const ffmpegArgs = computed({
   get: () => ((cfg.value.ffmpeg_extra_args as string[]) || []).join(', '),
@@ -238,6 +268,22 @@ h2 { font-size:16px; font-weight:600; color:var(--text-bright); margin-bottom:16
 :deep(.check-row input[type=checkbox]) { width:15px; height:15px; accent-color:var(--accent); }
 .hint { font-size:12px; color:var(--muted); margin-top:-6px; margin-bottom:10px; }
 .hint a { color:var(--accent); }
+.key-row { display:flex; align-items:center; gap:6px; max-width:420px; }
+.key-input {
+  flex:1; background:var(--input-bg); border:1px solid var(--border); border-radius:5px;
+  color:var(--text-bright); padding:7px 10px; font-size:13px; font-family:ui-monospace,Menlo,Consolas,monospace;
+  outline:none; cursor:default;
+}
+.icon-btn {
+  flex-shrink:0; width:32px; height:32px; border-radius:5px; border:1px solid var(--border);
+  background:var(--input-bg); color:var(--text); font-size:15px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center; transition:background .15s,color .15s;
+}
+.icon-btn:hover { background:rgba(255,255,255,.08); }
+.icon-btn.copied { color:var(--green); border-color:var(--green); }
+.icon-btn.regen { color:var(--red); border-color:rgba(224,108,117,.4); }
+.icon-btn.regen:hover { background:rgba(224,108,117,.12); }
+.icon-btn:disabled { opacity:.4; cursor:default; }
 .save-row { display:flex; align-items:center; gap:10px; margin-top:20px; padding-top:16px; border-top:1px solid var(--border); }
 .btn {
   background:var(--accent); color:#1e2127; font-weight:600; font-size:13px;

@@ -226,8 +226,8 @@ def _detect_download_root(service_url: str, api_key: str) -> str:
 # ─── TORZNAB_API_KEY lifecycle ─────────────────────────────────────────────────
 
 def _generate_torznab_key() -> str:
-    """Generate a persistent high-entropy Torznab API key."""
-    return secrets.token_urlsafe(32)
+    """Generate a 32-char lowercase hex key (same format as Radarr/Sonarr API keys)."""
+    return secrets.token_hex(16)
 
 
 # ─── Settings ──────────────────────────────────────────────────────────────────
