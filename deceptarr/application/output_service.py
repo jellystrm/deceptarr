@@ -6,10 +6,10 @@ from dataclasses import replace
 
 import requests
 
-from vn_source_gateway.domain.models import EpisodeWanted, GatewayJob, MovieWanted, SourceHit
-from vn_source_gateway.infrastructure.config import Settings
-from vn_source_gateway.infrastructure.downloader import HlsDownloader
-from vn_source_gateway.infrastructure.util import safe_filename
+from deceptarr.domain.models import EpisodeWanted, GatewayJob, MovieWanted, SourceHit
+from deceptarr.infrastructure.config import Settings
+from deceptarr.infrastructure.downloader import HlsDownloader
+from deceptarr.infrastructure.util import safe_filename
 
 log = logging.getLogger(__name__)
 

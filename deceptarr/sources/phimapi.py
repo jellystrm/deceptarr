@@ -7,9 +7,9 @@ from typing import Any
 
 import requests
 
-from vn_source_gateway.adapters.tmdb import TmdbClient, TmdbSeriesInfo
-from vn_source_gateway.adapters.tvmaze import TVMazeClient
-from vn_source_gateway.domain.models import EpisodeWanted, MovieWanted, SourceHit
+from deceptarr.adapters.tmdb import TmdbClient, TmdbSeriesInfo
+from deceptarr.adapters.tvmaze import TVMazeClient
+from deceptarr.domain.models import EpisodeWanted, MovieWanted, SourceHit
 from .base import Source
 from .scoring import detect_season, score_item, season_for_abs_ep
 from .text import _is_supported_lang, _safe_int, normalize_text

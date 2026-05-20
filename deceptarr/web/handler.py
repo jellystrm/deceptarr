@@ -7,11 +7,11 @@ from http.server import BaseHTTPRequestHandler
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
-from vn_source_gateway.application.grab_service import decode_release, encode_release, enqueue_from_url
-from vn_source_gateway.infrastructure.activity import ActivityLog
-from vn_source_gateway.infrastructure.config import Settings, save_settings
-from vn_source_gateway.interfaces.download_clients import qbittorrent
-from vn_source_gateway.interfaces.indexers.torznab import caps_response, search_response
+from deceptarr.application.grab_service import decode_release, encode_release, enqueue_from_url
+from deceptarr.infrastructure.activity import ActivityLog
+from deceptarr.infrastructure.config import Settings, save_settings
+from deceptarr.interfaces.download_clients import qbittorrent
+from deceptarr.interfaces.indexers.torznab import caps_response, search_response
 from .forms import form_to_config, parse_multipart, parse_multipart_files, read_urlencoded, test_connection, test_connections
 from .page import ALL_SECTIONS, SECTION_ALIASES, render_page
 from .torrent import extract_announce, make_grab_torrent
@@ -21,7 +21,7 @@ log = logging.getLogger(__name__)
 
 def build_handler() -> type[BaseHTTPRequestHandler]:
     class Handler(BaseHTTPRequestHandler):
-        server_version = "vn-source-gateway-ui/0.1"
+        server_version = "deceptarr-ui/0.1"
 
         def log_message(self, fmt: str, *args: object) -> None:
             log.debug("UI: " + fmt, *args)
@@ -221,7 +221,7 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
             self.send_response(HTTPStatus.OK)
             self.send_header("Content-Type", "text/plain; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
-            self.send_header("Set-Cookie", "SID=vn-source; HttpOnly; path=/")
+            self.send_header("Set-Cookie", "SID=deceptarr; HttpOnly; path=/")
             self.end_headers()
             self.wfile.write(body)
 
@@ -239,7 +239,7 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
                 form = read_urlencoded(body)
                 files = {}
 
-            category = form.get("category", "vn-source")
+            category = form.get("category", "deceptarr")
             paused = form.get("paused", "").lower() in {"true", "1", "yes", "on"}
 
             # Collect candidate grab URLs from two sources:
@@ -277,7 +277,7 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
                 return
 
             log.info("Download client add accepted: category=%s paused=%s jobs=%s", category, paused, ",".join(added))
-            from vn_source_gateway.infrastructure.jobs import JobStore
+            from deceptarr.infrastructure.jobs import JobStore
             store = JobStore(settings.state_path)
             for job_id in added:
                 job = store.get(job_id)
@@ -296,7 +296,7 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
             form = self._read_form()
             settings = Settings.load()
             action = form.get("action", "")
-            from vn_source_gateway.infrastructure.jobs import JobStore
+            from deceptarr.infrastructure.jobs import JobStore
             store = JobStore(settings.state_path)
             jobs = store.list_jobs()
             if action == "resume_all":
@@ -397,8 +397,8 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
             season = int(params.get("season", 1) or 1)
             episode = int(params.get("episode", 1) or 1)
 
-            from vn_source_gateway.sources import build_sources
-            from vn_source_gateway.domain.models import MovieWanted, EpisodeWanted
+            from deceptarr.sources import build_sources
+            from deceptarr.domain.models import MovieWanted, EpisodeWanted
             sources = build_sources(settings.hls_template_sources, tmdb_api_key=settings.tmdb_api_key)
             results: dict[str, dict] = {}
             for source_name, source in sources.items():

@@ -5,7 +5,7 @@ import json
 import time
 from typing import Any
 
-from vn_source_gateway.infrastructure.activity import ActivityLog
+from deceptarr.infrastructure.activity import ActivityLog
 
 
 def _attr(value: object) -> str:

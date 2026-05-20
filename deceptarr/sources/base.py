@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from abc import ABC, abstractmethod
 
-from vn_source_gateway.domain.models import EpisodeWanted, MovieWanted, SourceHit
+from deceptarr.domain.models import EpisodeWanted, MovieWanted, SourceHit
 
 
 class Source(ABC):

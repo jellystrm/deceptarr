@@ -9,7 +9,7 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY vn_source_gateway ./vn_source_gateway
+COPY deceptarr ./deceptarr
 
 ENV PYTHONUNBUFFERED=1
-CMD ["python", "-m", "vn_source_gateway"]
+CMD ["python", "-m", "deceptarr"]

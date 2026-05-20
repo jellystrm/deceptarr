@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import pytest
-from vn_source_gateway.sources.text import (
+from deceptarr.sources.text import (
     _identity_leakage,
     _is_supported_lang,
     _safe_int,

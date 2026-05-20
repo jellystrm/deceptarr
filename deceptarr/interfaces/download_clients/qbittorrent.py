@@ -4,10 +4,10 @@ import threading
 import time
 from typing import Any
 
-from vn_source_gateway.application.grab_service import process_job
-from vn_source_gateway.domain.models import GatewayJob
-from vn_source_gateway.infrastructure.config import Settings
-from vn_source_gateway.infrastructure.jobs import JobStore
+from deceptarr.application.grab_service import process_job
+from deceptarr.domain.models import GatewayJob
+from deceptarr.infrastructure.config import Settings
+from deceptarr.infrastructure.jobs import JobStore
 
 
 def torrents_info(settings: Settings) -> list[dict[str, Any]]:
@@ -30,7 +30,7 @@ def pause(settings: Settings, hashes: str, paused: bool) -> None:
             store.update(job_id, paused=False, status="queued", progress=0.0, error=None)
             threading.Thread(
                 target=process_job, args=(settings, job_id),
-                name=f"vn-source-job-{job_id[:8]}", daemon=True,
+                name=f"deceptarr-job-{job_id[:8]}", daemon=True,
             ).start()
         else:
             store.update(job_id, paused=False)
@@ -71,7 +71,7 @@ def build_info() -> dict[str, Any]:
 
 
 def categories(settings: Settings) -> dict[str, Any]:
-    return {"vn-source": {"name": "vn-source", "savePath": settings.download_root}}
+    return {"deceptarr": {"name": "deceptarr", "savePath": settings.download_root}}
 
 
 def transfer_info() -> dict[str, int]:
@@ -119,7 +119,7 @@ def _job_to_qbit(job: GatewayJob) -> dict[str, Any]:
         "added_on": job.created_at,
         "completion_on": job.updated_at if job.status == "completed" else 0,
         "last_activity": job.updated_at,
-        "tracker": "vn-source",
+        "tracker": "deceptarr",
         "tags": "strm" if job.release.output_mode == "strm" else "hls-dl",
         "seq_dl": False,
         "f_l_piece_prio": False,

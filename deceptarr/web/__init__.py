@@ -16,7 +16,7 @@ class UiServer:
         self.httpd = ThreadingHTTPServer((host, port), build_handler())
 
     def start_background(self) -> None:
-        thread = threading.Thread(target=self.serve_forever, name="vn-source-gateway-ui", daemon=True)
+        thread = threading.Thread(target=self.serve_forever, name="deceptarr-ui", daemon=True)
         thread.start()
 
     def serve_forever(self) -> None:

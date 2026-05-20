@@ -7,7 +7,7 @@ from urllib.parse import parse_qs
 
 import requests
 
-from vn_source_gateway.infrastructure.config import Settings
+from deceptarr.infrastructure.config import Settings
 
 log = logging.getLogger(__name__)
 

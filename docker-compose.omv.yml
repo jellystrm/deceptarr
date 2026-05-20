@@ -1,9 +1,9 @@
 # Date: 2025-06-01
-# https://github.com/jellystrm/vn-source-gateway
+# https://github.com/jellystrm/deceptarr
 services:
-  vn-source-gateway:
-    image: ghcr.io/jellystrm/vn-source-gateway:latest
-    container_name: vn-source-gateway
+  deceptarr:
+    image: ghcr.io/jellystrm/deceptarr:latest
+    container_name: deceptarr
     network_mode: host
     environment:
       - PUID=${PUID}
@@ -26,7 +26,7 @@ services:
       - UI_PORT=${UI_PORT}
     volumes:
       # Thư mục cấu hình
-      - /appdata/vn-source-gateway:/config
+      - /appdata/deceptarr:/config
 
       # Thư mục tải về (Phải giống hệt Radarr/Sonarr)
       - /srv/mergerfs/MainPool/downloads:/downloads

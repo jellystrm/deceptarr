@@ -73,7 +73,7 @@ class GatewayJob:
     progress: float
     created_at: int
     updated_at: int
-    category: str = "vn-source"
+    category: str = "deceptarr"
     paused: bool = False
     save_path: str | None = None
     hls_url: str | None = None

@@ -7,14 +7,14 @@ import time
 from collections.abc import Callable
 from dataclasses import replace
 
-from vn_source_gateway.adapters.media_managers import RadarrClient, SonarrClient
-from vn_source_gateway.application.output_service import OutputService
-from vn_source_gateway.domain.models import EpisodeWanted, GatewayJob, GatewayRelease, MovieWanted, SourceHit
-from vn_source_gateway.infrastructure.config import Settings
-from vn_source_gateway.infrastructure.downloader import HlsDownloader
-from vn_source_gateway.infrastructure.jobs import JobStore
-from vn_source_gateway.infrastructure.state import StateStore
-from vn_source_gateway.sources import Source, build_sources
+from deceptarr.adapters.media_managers import RadarrClient, SonarrClient
+from deceptarr.application.output_service import OutputService
+from deceptarr.domain.models import EpisodeWanted, GatewayJob, GatewayRelease, MovieWanted, SourceHit
+from deceptarr.infrastructure.config import Settings
+from deceptarr.infrastructure.downloader import HlsDownloader
+from deceptarr.infrastructure.jobs import JobStore
+from deceptarr.infrastructure.state import StateStore
+from deceptarr.sources import Source, build_sources
 
 log = logging.getLogger(__name__)
 
@@ -30,7 +30,7 @@ class Worker:
         self.downloader = HlsDownloader(settings.download_root, settings.ffmpeg_path, settings.ffmpeg_extra_args)
 
     def run_forever(self) -> None:
-        log.info("vn-source-gateway started")
+        log.info("deceptarr started")
         while True:
             started = time.time()
             try:
@@ -92,7 +92,7 @@ class Worker:
                 progress=existing.progress if existing else 0.0,
                 created_at=existing.created_at if existing else now,
                 updated_at=now,
-                category="vn-source",
+                category="deceptarr",
             )
             self.jobs.upsert(job)
             path = output.strm_path(job) if mode == "strm" else self.downloader.movie_path(movie)
@@ -135,7 +135,7 @@ class Worker:
                 progress=existing.progress if existing else 0.0,
                 created_at=existing.created_at if existing else now,
                 updated_at=now,
-                category="vn-source",
+                category="deceptarr",
             )
             self.jobs.upsert(job)
             path = output.strm_path(job) if mode == "strm" else self.downloader.episode_path(episode)
@@ -224,7 +224,7 @@ def _resume_interrupted_jobs(settings: Settings) -> None:
     function re-queues them and spawns fresh threads so they continue.
     """
     import threading
-    from vn_source_gateway.application.grab_service import process_job
+    from deceptarr.application.grab_service import process_job
 
     store = JobStore(settings.state_path)
     resumed = 0
@@ -235,7 +235,7 @@ def _resume_interrupted_jobs(settings: Settings) -> None:
             threading.Thread(
                 target=process_job,
                 args=(settings, job.job_id),
-                name=f"vn-source-job-{job.job_id[:8]}",
+                name=f"deceptarr-job-{job.job_id[:8]}",
                 daemon=True,
             ).start()
             log.info("Resumed interrupted job %s (%s)", job.job_id[:8], job.release.title)
@@ -251,7 +251,7 @@ def main() -> None:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
     # Persist activity log next to state.json
-    from vn_source_gateway.infrastructure.activity import ActivityLog
+    from deceptarr.infrastructure.activity import ActivityLog
     activity_path = settings.state_path.replace("state.json", "activity.json")
     if activity_path == settings.state_path:          # fallback if path has no state.json
         activity_path = settings.state_path + ".activity.json"
@@ -260,11 +260,11 @@ def main() -> None:
 
     worker = Worker(settings)
     if settings.run_once or "--once" in sys.argv:
-        log.info("vn-source-gateway running one cycle")
+        log.info("deceptarr running one cycle")
         worker.run_once()
         return
     if settings.ui_enabled:
-        from vn_source_gateway.web import UiServer
+        from deceptarr.web import UiServer
 
         UiServer(settings.ui_host, settings.ui_port).start_background()
     _resume_interrupted_jobs(settings)

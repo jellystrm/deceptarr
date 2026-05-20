@@ -85,7 +85,7 @@ class Settings:
     source_order: list[str] = field(default_factory=lambda: ["kkphim", "ophim", "nguonc"])
     default_output_mode: str = "strm"
     expose_both_modes: bool = False
-    torznab_api_key: str = "vn-source"
+    torznab_api_key: str = "deceptarr"
     public_base_url: str = "http://127.0.0.1:8765"
     qb_username: str = "admin"
     qb_password: str = "adminadmin"
@@ -146,7 +146,7 @@ class Settings:
             source_order=_list_value(file_data, "source_order", "SOURCE_ORDER", ["kkphim", "ophim", "nguonc"]),
             default_output_mode=str(_value(file_data, "default_output_mode", "DEFAULT_OUTPUT_MODE", "strm")),
             expose_both_modes=_bool_value(file_data, "expose_both_modes", "EXPOSE_BOTH_MODES", False),
-            torznab_api_key=str(_value(file_data, "torznab_api_key", "TORZNAB_API_KEY", "vn-source")),
+            torznab_api_key=str(_value(file_data, "torznab_api_key", "TORZNAB_API_KEY", "deceptarr")),
             public_base_url=str(_value(file_data, "public_base_url", "PUBLIC_BASE_URL", "http://127.0.0.1:8765")).rstrip("/"),
             qb_username=str(_value(file_data, "qb_username", "QB_USERNAME", "admin")),
             qb_password=str(_value(file_data, "qb_password", "QB_PASSWORD", "adminadmin")),

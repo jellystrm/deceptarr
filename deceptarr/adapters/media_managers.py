@@ -5,8 +5,8 @@ from typing import Any
 
 import requests
 
-from vn_source_gateway.domain.models import EpisodeWanted, MovieWanted
-from vn_source_gateway.infrastructure.util import as_int
+from deceptarr.domain.models import EpisodeWanted, MovieWanted
+from deceptarr.infrastructure.util import as_int
 
 log = logging.getLogger(__name__)
 

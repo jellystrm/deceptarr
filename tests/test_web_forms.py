@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import pytest
-from vn_source_gateway.infrastructure.config import Settings
-from vn_source_gateway.web.forms import form_to_config, parse_multipart
+from deceptarr.infrastructure.config import Settings
+from deceptarr.web.forms import form_to_config, parse_multipart
 
 
 # ── parse_multipart ───────────────────────────────────────────────────────────
@@ -70,7 +70,7 @@ class TestFormToConfig:
             "ffmpeg_path": "ffmpeg",
             "ffmpeg_extra_args": "",
             "log_level": "INFO",
-            "torznab_api_key": "vn-source",
+            "torznab_api_key": "deceptarr",
             "public_base_url": "http://localhost:8765",
             "qb_username": "admin",
             "qb_password": "adminadmin",

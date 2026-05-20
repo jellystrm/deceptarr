@@ -1,4 +1,4 @@
-# vn-source-gateway
+# Deceptarr
 
 HLS source gateway for Radarr/Sonarr/Jellyseerr workflows.
 
@@ -36,9 +36,9 @@ Add the indexer:
 ```text
 Settings -> Indexers -> Add -> Torznab -> Custom
 
-Name: VN Source
-URL: http://vn-source-gateway:8765/torznab/api
-API Key: value from service UI, default vn-source
+Name: Deceptarr
+URL: http://deceptarr:8765/torznab/api
+API Key: value from service UI, default deceptarr
 Categories: 2000,2040,5000,5040
 ```
 
@@ -47,12 +47,12 @@ Add the download client:
 ```text
 Settings -> Download Clients -> Add -> qBittorrent
 
-Name: VN Source
-Host: vn-source-gateway
+Name: Deceptarr
+Host: deceptarr
 Port: 8765
 Username: value from service UI, default admin
 Password: value from service UI, default adminadmin
-Category: vn-source
+Category: deceptarr
 ```
 
 The service implements the qBittorrent Web API endpoints Radarr/Sonarr commonly use for testing, adding, tracking, pausing/resuming, and deleting jobs:
@@ -160,8 +160,8 @@ title, year, tmdb_id, tvdb_id, imdb_id, season, episode
 ## Local Smoke Test
 
 ```bash
-cd vn-source-gateway
-python3 -m vn_source_gateway --once
+cd deceptarr
+python3 -m deceptarr --once
 ```
 
 Full gateway smoke test:
@@ -185,7 +185,7 @@ Start the UI locally:
 | `UI_HOST` | `0.0.0.0` | UI listen host |
 | `UI_PORT` | `8765` | UI listen port |
 | `PUBLIC_BASE_URL` | `http://127.0.0.1:8765` | Base URL embedded in Torznab release links |
-| `TORZNAB_API_KEY` | `vn-source` | Indexer API key |
+| `TORZNAB_API_KEY` | `deceptarr` | Indexer API key |
 | `QB_USERNAME` | `admin` | qBittorrent-compatible username |
 | `QB_PASSWORD` | `adminadmin` | qBittorrent-compatible password |
 | `DEFAULT_OUTPUT_MODE` | `strm` | `strm` or `download` |

@@ -5,10 +5,10 @@ from dataclasses import replace
 from unittest.mock import patch
 
 import pytest
-from vn_source_gateway.domain.models import GatewayJob, GatewayRelease
-from vn_source_gateway.infrastructure.config import Settings
-from vn_source_gateway.infrastructure.jobs import JobStore
-from vn_source_gateway.interfaces.download_clients import qbittorrent
+from deceptarr.domain.models import GatewayJob, GatewayRelease
+from deceptarr.infrastructure.config import Settings
+from deceptarr.infrastructure.jobs import JobStore
+from deceptarr.interfaces.download_clients import qbittorrent
 
 
 @pytest.fixture

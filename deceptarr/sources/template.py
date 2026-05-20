@@ -4,7 +4,7 @@ from typing import Any
 
 import requests
 
-from vn_source_gateway.domain.models import EpisodeWanted, MovieWanted, SourceHit
+from deceptarr.domain.models import EpisodeWanted, MovieWanted, SourceHit
 from .base import Source
 
 

@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from vn_source_gateway.adapters.tmdb import TmdbSeriesInfo
+from deceptarr.adapters.tmdb import TmdbSeriesInfo
 from .text import _identity_leakage, _safe_int, normalize_text
 
 

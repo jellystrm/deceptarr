@@ -4,8 +4,8 @@ import logging
 import os
 import subprocess
 
-from vn_source_gateway.domain.models import EpisodeWanted, MovieWanted, SourceHit
-from vn_source_gateway.infrastructure.util import safe_filename
+from deceptarr.domain.models import EpisodeWanted, MovieWanted, SourceHit
+from deceptarr.infrastructure.util import safe_filename
 
 log = logging.getLogger(__name__)
 

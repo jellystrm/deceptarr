@@ -1,11 +1,11 @@
 services:
-  vn-source-gateway:
-    image: ghcr.io/jellystrm/vn-source-gateway:latest
-    container_name: vn-source-gateway
+  deceptarr:
+    image: ghcr.io/jellystrm/deceptarr:latest
+    container_name: deceptarr
     restart: unless-stopped
     environment:
-      PUBLIC_BASE_URL: http://vn-source-gateway:8765
-      TORZNAB_API_KEY: vn-source
+      PUBLIC_BASE_URL: http://deceptarr:8765
+      TORZNAB_API_KEY: deceptarr
       QB_USERNAME: admin
       QB_PASSWORD: adminadmin
       DEFAULT_OUTPUT_MODE: strm

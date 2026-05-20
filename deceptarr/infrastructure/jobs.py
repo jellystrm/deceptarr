@@ -6,7 +6,7 @@ import time
 from dataclasses import asdict
 from typing import Any
 
-from vn_source_gateway.domain.models import GatewayJob, GatewayRelease
+from deceptarr.domain.models import GatewayJob, GatewayRelease
 
 
 class JobStore:
@@ -65,7 +65,7 @@ class JobStore:
             progress=float(raw.get("progress", 0)),
             created_at=int(raw.get("created_at", time.time())),
             updated_at=int(raw.get("updated_at", time.time())),
-            category=raw.get("category", "vn-source"),
+            category=raw.get("category", "deceptarr"),
             paused=bool(raw.get("paused", False)),
             save_path=raw.get("save_path"),
             hls_url=raw.get("hls_url"),

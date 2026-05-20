@@ -3,7 +3,7 @@ from __future__ import annotations
 import html
 import json
 
-from vn_source_gateway.infrastructure.config import Settings
+from deceptarr.infrastructure.config import Settings
 from .cards import (
     _attr,
     activity_log_card,
@@ -202,16 +202,16 @@ def render_page(settings: Settings, message: str, section: str, settings_tab: st
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>vn-source-gateway</title>
+  <title>Deceptarr</title>
   <style>{CSS}</style>
 </head>
 <body>
 
 <nav class="sidebar">
   <a class="sidebar-brand" href="/dashboard">
-    <div class="brand-icon">V</div>
+    <div class="brand-icon">D</div>
     <div>
-      <div class="brand-name">vn-source-gateway</div>
+      <div class="brand-name">Deceptarr</div>
       <div class="brand-sub">Media Source Gateway</div>
     </div>
   </a>
@@ -396,7 +396,7 @@ def _build_grab_tree(grabs: list[dict]) -> list[dict]:
       children    – list of {title, token, r} for individual episodes
       kind        – "movie" | "episode"
     """
-    from vn_source_gateway.application.grab_service import decode_release
+    from deceptarr.application.grab_service import decode_release
 
     # Decode + deduplicate (prefer strm token as canonical per episode)
     seen: dict[tuple, dict] = {}
@@ -467,7 +467,7 @@ def _build_grab_tree(grabs: list[dict]) -> list[dict]:
 
 def _indexer_card(settings: Settings) -> tuple[str, int, int, int]:
     """LinkGrabber tab — tree view of packages.  Returns (html, pkg_count, link_count, error_count)."""
-    from vn_source_gateway.infrastructure.activity import ActivityLog
+    from deceptarr.infrastructure.activity import ActivityLog
     import time as _time
 
     now = int(_time.time())
@@ -603,7 +603,7 @@ def _indexer_card(settings: Settings) -> tuple[str, int, int, int]:
 
 def _download_card(settings: Settings) -> tuple[str, int, int, int]:
     """Downloads tab — tree view of packages.  Returns (html, pkg_count, running_count, error_count)."""
-    from vn_source_gateway.infrastructure.jobs import JobStore
+    from deceptarr.infrastructure.jobs import JobStore
     import time as _time
 
     now = int(_time.time())

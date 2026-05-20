@@ -4,18 +4,18 @@ import hashlib
 from email.utils import formatdate
 from html import escape as xml_escape
 
-from vn_source_gateway.adapters.tmdb import TmdbClient
-from vn_source_gateway.adapters.tvmaze import TVMazeClient
-from vn_source_gateway.application.grab_service import encode_release
-from vn_source_gateway.domain.models import GatewayRelease, OutputMode
-from vn_source_gateway.infrastructure.activity import ActivityLog
-from vn_source_gateway.infrastructure.config import Settings
+from deceptarr.adapters.tmdb import TmdbClient
+from deceptarr.adapters.tvmaze import TVMazeClient
+from deceptarr.application.grab_service import encode_release
+from deceptarr.domain.models import GatewayRelease, OutputMode
+from deceptarr.infrastructure.activity import ActivityLog
+from deceptarr.infrastructure.config import Settings
 
 
 def caps_response() -> str:
     return """<?xml version="1.0" encoding="UTF-8"?>
 <caps>
-  <server version="1.0" title="VN Source Gateway"/>
+  <server version="1.0" title="Deceptarr"/>
   <limits max="100" default="50"/>
   <searching>
     <search available="yes" supportedParams="q"/>
@@ -69,7 +69,7 @@ def search_response(settings: Settings, query: dict[str, list[str]]) -> str:
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:torznab="http://torznab.com/schemas/2015/feed">
   <channel>
-    <title>VN Source Gateway</title>
+    <title>Deceptarr</title>
     <description>HLS to STRM or HLS download gateway</description>
     {items}
   </channel>
