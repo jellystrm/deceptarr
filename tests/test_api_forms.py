@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import pytest
 from backend.infrastructure.config import Settings
-from backend.web.forms import form_to_config, parse_multipart
+from backend.api.forms import form_to_config, parse_multipart
 
 
 # ── parse_multipart ───────────────────────────────────────────────────────────

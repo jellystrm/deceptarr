@@ -35,7 +35,7 @@ cat > "${WORK_DIR}/config.json" <<JSON
 }
 JSON
 
-CONFIG_PATH="${WORK_DIR}/config.json" python3 -m deceptarr > "${WORK_DIR}/server.log" 2>&1 &
+CONFIG_PATH="${WORK_DIR}/config.json" python3 -m backend > "${WORK_DIR}/server.log" 2>&1 &
 PID="$!"
 trap 'kill "${PID}" >/dev/null 2>&1 || true' EXIT
 
@@ -64,7 +64,7 @@ done
 
 test -f "${WORK_DIR}/movies/Test Movie (2026)/Test Movie (2026).strm"
 grep -q "https://stream.example/123/Test Movie.m3u8" "${WORK_DIR}/movies/Test Movie (2026)/Test Movie (2026).strm"
-curl -fsS "${BASE_URL}/api/v2/torrents/info" | grep -q '"state": "uploading"'
+curl -fsS "${BASE_URL}/api/v2/torrents/info" | grep -q '"state":"uploading"'
 curl -fsS "${BASE_URL}/api/v2/app/preferences" | grep -q '"save_path"'
 curl -fsS "${BASE_URL}/api/v2/sync/maindata" | grep -q '"torrents"'
 

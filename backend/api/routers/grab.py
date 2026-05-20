@@ -6,7 +6,7 @@ from fastapi import APIRouter, Response
 
 from backend.application.grab_service import decode_release
 from backend.infrastructure.config import Settings
-from backend.web.torrent import make_grab_torrent
+from backend.application.torrent import make_grab_torrent
 
 log = logging.getLogger(__name__)
 router = APIRouter()

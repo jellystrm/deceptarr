@@ -3,6 +3,7 @@ from __future__ import annotations
 import pathlib
 
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from .routers import actions, grab, manual_grab, qbittorrent, source_test, torznab
@@ -22,11 +23,17 @@ def create_app() -> FastAPI:
     app.include_router(manual_grab.router)
 
     if _DIST.is_dir():
-        # Phase 2: compiled Vue SPA in dist/ — serve as static files
         app.mount("/", StaticFiles(directory=str(_DIST), html=True), name="spa")
     else:
-        # Phase 1: fall back to Python-rendered HTML while Vue is not built
-        from .routers import ui_routes
-        app.include_router(ui_routes.router)
+        @app.get("/")
+        def frontend_missing() -> JSONResponse:
+            return JSONResponse(
+                {
+                    "service": "deceptarr",
+                    "status": "ok",
+                    "frontend": "missing dist build",
+                    "hint": "Run npm run build in frontend/ or use the Vite dev server.",
+                }
+            )
 
     return app

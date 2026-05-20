@@ -267,7 +267,7 @@ class Settings:
 
     @staticmethod
     def load() -> "Settings":
-        config_path = "/config/config.json"
+        config_path = os.getenv("CONFIG_PATH", "").strip() or "/config/config.json"
 
         file_data: dict[str, Any] = {}
         if os.path.exists(config_path):

@@ -8,7 +8,7 @@ from fastapi.responses import PlainTextResponse, RedirectResponse, Response
 
 from backend.application.grab_service import decode_release, encode_release, enqueue_from_url
 from backend.infrastructure.config import Settings
-from backend.web.forms import parse_multipart, read_urlencoded
+from backend.api.forms import parse_multipart, read_urlencoded
 
 log = logging.getLogger(__name__)
 router = APIRouter()

@@ -161,7 +161,7 @@ title, year, tmdb_id, tvdb_id, imdb_id, season, episode
 
 ```bash
 cd deceptarr
-python3 -m deceptarr --once
+python3 -m backend --once
 ```
 
 Full gateway smoke test:

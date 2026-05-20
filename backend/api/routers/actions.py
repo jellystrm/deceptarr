@@ -7,7 +7,7 @@ from fastapi.responses import PlainTextResponse, RedirectResponse, Response
 
 from backend.infrastructure.config import Settings, save_settings
 from backend.interfaces.download_clients import qbittorrent
-from backend.web.forms import form_to_config, parse_multipart, read_urlencoded, test_connection, test_connections
+from backend.api.forms import form_to_config, parse_multipart, read_urlencoded, test_connection, test_connections
 
 log = logging.getLogger(__name__)
 router = APIRouter()

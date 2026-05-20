@@ -8,8 +8,8 @@ from fastapi.responses import JSONResponse, PlainTextResponse
 from backend.application.grab_service import enqueue_from_url
 from backend.infrastructure.config import Settings
 from backend.interfaces.download_clients import qbittorrent
-from backend.web.forms import parse_multipart, parse_multipart_files, read_urlencoded
-from backend.web.torrent import extract_announce
+from backend.api.forms import parse_multipart, parse_multipart_files, read_urlencoded
+from backend.application.torrent import extract_announce
 
 log = logging.getLogger(__name__)
 router = APIRouter(prefix="/api/v2")
