@@ -62,10 +62,23 @@ def create_app() -> FastAPI:
     app.include_router(pipeline.router)
 
     if _DIST.is_dir():
-        app.mount("/", StaticFiles(directory=str(_DIST), html=True), name="spa")
+        # Serve hashed JS/CSS assets from /assets/* with correct caching headers
+        _assets_dir = _DIST / "assets"
+        if _assets_dir.is_dir():
+            app.mount("/assets", StaticFiles(directory=str(_assets_dir)), name="assets")
+
+        # SPA catch-all: serve index.html for every non-API route so that
+        # Vue Router's createWebHistory() works on direct URL navigation.
+        # This must be the LAST route registered.
+        _index_html = _DIST / "index.html"
+
+        @app.get("/{full_path:path}")
+        async def spa_fallback(full_path: str) -> Response:
+            from fastapi.responses import FileResponse
+            return FileResponse(str(_index_html), media_type="text/html")
     else:
-        @app.get("/")
-        def frontend_missing() -> JSONResponse:
+        @app.get("/{full_path:path}")
+        def frontend_missing(full_path: str) -> JSONResponse:
             return JSONResponse(
                 {
                     "service": "deceptarr",
