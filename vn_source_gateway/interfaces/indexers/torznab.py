@@ -52,6 +52,10 @@ def search_response(settings: Settings, query: dict[str, list[str]]) -> str:
         # Skip logging test/RSS queries (no real show identifier)
         if display_title:
             result_titles = [_release_display_title(r) for r in releases]
+            result_grabs = [
+                {"title": _release_display_title(r), "token": encode_release(r)}
+                for r in releases
+            ]
             ActivityLog.get().add(
                 kind="search",
                 title=f"{kind}: {display_title}",
@@ -59,6 +63,7 @@ def search_response(settings: Settings, query: dict[str, list[str]]) -> str:
                 status="ok" if releases else "error",
                 results=result_titles,
                 url=query_url,
+                grabs=result_grabs,
             )
     items = "\n".join(_release_item(settings, release) for release in releases)
     return f"""<?xml version="1.0" encoding="UTF-8"?>
@@ -105,8 +110,10 @@ def build_releases(settings: Settings, query: dict[str, list[str]]) -> list[Gate
     server_labels: list[str] = settings.server_labels if settings.server_labels else [""]
 
     # Source list: None = auto-select from source_order at grab time (grouped mode)
-    if settings.torznab_group_sources or not settings.source_order:
+    if settings.torznab_group_sources:
         source_list: list[str | None] = [None]
+    elif not settings.source_order:
+        return []  # no sources configured → nothing to offer
     else:
         source_list = list(settings.source_order)
 

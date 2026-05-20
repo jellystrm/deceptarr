@@ -133,21 +133,179 @@ def media_managers_card(config: dict[str, Any]) -> str:
 
 
 def sources_card(config: dict[str, Any], templates: str, source_order: str) -> str:
+    """Sources page: JS-managed source list with priority, per-source mode/container, and test panel."""
+    import json as _json
+    sources_data = config.get("hls_template_sources", [])
+    # Serialize for JS injection — escape </script> to avoid breaking the tag
+    sources_json = _json.dumps(sources_data, ensure_ascii=False).replace("</", "<\\/")
+
+    # --- JavaScript source manager ---
+    src_js = (
+        "(function(){"
+        "var S=" + sources_json + ";"
+        r"""
+function esc(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
+function render(){
+  var c=document.getElementById('src-list');
+  if(!S.length){c.innerHTML='<p style="color:var(--muted);font-size:13px;padding:8px 0">No sources yet. Click &quot;+ Add Source&quot;.</p>';}
+  else{c.innerHTML=S.map(function(s,i){return row(s,i);}).join('');}
+  sync();
+}
+function sel(val,opts){
+  return opts.map(function(o){return '<option value="'+esc(o[0])+'"'+(val===o[0]?' selected':'')+'>'+esc(o[1])+'</option>';}).join('');
+}
+function row(s,i){
+  var n=S.length;
+  return '<div style="display:flex;align-items:flex-start;gap:8px;padding:10px 0;border-bottom:1px solid var(--border)">'
+    +'<div style="min-width:20px;text-align:center;font-size:11px;color:var(--muted);padding-top:28px">'+(i+1)+'</div>'
+    +'<div style="display:flex;flex-direction:column;gap:2px;padding-top:24px">'
+    +'<button type="button" onclick="sUp('+i+')" '+(i===0?'disabled':'')+' style="padding:0 4px;font-size:12px;line-height:1.4;cursor:pointer">↑</button>'
+    +'<button type="button" onclick="sDn('+i+')" '+(i===n-1?'disabled':'')+' style="padding:0 4px;font-size:12px;line-height:1.4;cursor:pointer">↓</button>'
+    +'</div>'
+    +'<div style="flex:1;min-width:0">'
+    +'<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px">'
+    +'<div class="field" style="flex:1;min-width:140px"><label class="field-label">Name</label>'
+    +'<input value="'+esc(s.name||'')+'" oninput="sSet('+i+',\'name\',this.value)" placeholder="my-source"></div>'
+    +'<div class="field"><label class="field-label">Output</label><select onchange="sSet('+i+',\'output_mode\',this.value)">'
+    +sel(s.output_mode||'strm',[['strm','STRM (.strm)'],['download','Download (ffmpeg)']])
+    +'</select></div>'
+    +'<div class="field"><label class="field-label">Container</label><select onchange="sSet('+i+',\'container\',this.value)">'
+    +sel(s.container||'mkv',[['mkv','MKV'],['mp4','MP4']])
+    +'</select></div>'
+    +'</div>'
+    +'<details style="margin-top:2px"><summary style="font-size:11px;color:var(--muted);cursor:pointer;user-select:none">URL templates</summary>'
+    +'<div style="display:grid;gap:6px;margin-top:6px">'
+    +'<div class="field"><label class="field-label">Movie URL template</label>'
+    +'<input value="'+esc(s.movie_url_template||'')+'" oninput="sSet('+i+',\'movie_url_template\',this.value)" placeholder="https://…/{tmdb_id}"></div>'
+    +'<div class="field"><label class="field-label">Series URL template</label>'
+    +'<input value="'+esc(s.series_url_template||'')+'" oninput="sSet('+i+',\'series_url_template\',this.value)" placeholder="https://…/{tmdb_id}/{season}/{episode}"></div>'
+    +'<div class="field"><label class="field-label">Movie resolver URL</label>'
+    +'<input value="'+esc(s.movie_resolver_url_template||'')+'" oninput="sSet('+i+',\'movie_resolver_url_template\',this.value)" placeholder="Returns JSON {hls_url:…}"></div>'
+    +'<div class="field"><label class="field-label">Series resolver URL</label>'
+    +'<input value="'+esc(s.series_resolver_url_template||'')+'" oninput="sSet('+i+',\'series_resolver_url_template\',this.value)" placeholder="Returns JSON {hls_url:…}"></div>'
+    +'</div></details>'
+    +'</div>'
+    +'<button type="button" class="btn btn-danger btn-small" onclick="sRm('+i+')" style="align-self:center;margin-left:4px">×</button>'
+    +'</div>';
+}
+function sync(){var e=document.getElementById('hls-sources-json');if(e)e.value=JSON.stringify(S);}
+window.sUp=function(i){if(i===0)return;var t=S[i-1];S[i-1]=S[i];S[i]=t;render();};
+window.sDn=function(i){if(i>=S.length-1)return;var t=S[i+1];S[i+1]=S[i];S[i]=t;render();};
+window.sRm=function(i){if(!confirm('Remove "'+esc(S[i].name||'?')+'"?'))return;S.splice(i,1);render();};
+window.sSet=function(i,k,v){S[i][k]=v;sync();};
+window.srcAddNew=function(){
+  S.push({name:'new-source',output_mode:'strm',container:'mkv',
+          movie_url_template:'',series_url_template:'',
+          movie_resolver_url_template:'',series_resolver_url_template:''});
+  render();
+};
+// media-type toggle for test panel
+var mt=document.getElementById('src-test-type');
+if(mt){
+  function tvToggle(){var tv=mt.value==='tv';
+    ['src-test-season-f','src-test-ep-f'].forEach(function(id){
+      var el=document.getElementById(id);if(el)el.style.display=tv?'':'none';});
+  }
+  mt.addEventListener('change',tvToggle);tvToggle();
+}
+// Test sources
+window.sourcesTest=function(){
+  var tid=(document.getElementById('src-test-tmdb')||{}).value||'';
+  if(!tid){alert('Please enter a TMDB ID');return;}
+  var p={tmdb_id:parseInt(tid),media_type:document.getElementById('src-test-type').value};
+  if(p.media_type==='tv'){
+    p.season=parseInt((document.getElementById('src-test-season')||{}).value)||1;
+    p.episode=parseInt((document.getElementById('src-test-ep')||{}).value)||1;
+  }
+  var res=document.getElementById('src-test-results');
+  res.innerHTML='<p style="color:var(--muted);font-size:13px">Testing…</p>';
+  fetch('/api/source-test',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(p)})
+    .then(function(r){return r.json();})
+    .then(function(d){
+      var rows=Object.keys(d).map(function(nm){
+        var r=d[nm],ok=r.status==='ok';
+        var det=ok?'<a href="'+esc(r.url)+'" target="_blank" style="font-size:11px;word-break:break-all">'+esc(r.url.slice(0,120)+(r.url.length>120?'…':''))+'</a>'
+                  :'<span style="color:var(--err);font-size:11px">'+esc(r.message||'Not found')+'</span>';
+        return '<tr><td style="padding:4px 10px;font-weight:500">'+esc(nm)+'</td>'
+              +'<td style="padding:4px 8px"><span class="sdot '+(ok?'ok':'err')+'"></span></td>'
+              +'<td style="padding:4px 10px">'+det+'</td></tr>';
+      });
+      res.innerHTML=rows.length
+        ?'<table style="width:100%"><tbody>'+rows.join('')+'</tbody></table>'
+        :'<p style="color:var(--muted);font-size:13px">No sources configured.</p>';
+    })
+    .catch(function(e){res.innerHTML='<p style="color:var(--err);font-size:13px">Error: '+esc(String(e))+'</p>';});
+};
+render();
+"""
+        + "})();"
+    )
+
     return f"""
-    <div class="card" id="sources">
+<form method="post" action="/save">
+  <input type="hidden" name="_section" value="sources">
+  <div class="card" id="sources">
+    <div class="card-header">
+      <div><div class="card-title">Sources</div>
+      <div class="card-desc">Priority-ordered HLS sources — first match wins at grab time</div></div>
+    </div>
+    <div class="card-body">
+      <div id="src-list"></div>
+      <div class="actions" style="margin:10px 0 0">
+        <button type="button" class="btn btn-ghost" onclick="srcAddNew()">+ Add Source</button>
+      </div>
+      <input type="hidden" name="hls_template_sources" id="hls-sources-json" value="{_attr(templates)}">
+    </div>
+  </div>
+  <div class="card" id="source-test-card" style="margin-top:14px">
+    <div class="card-header">
+      <div><div class="card-title">Test Sources</div>
+      <div class="card-desc">Resolve a TMDB ID against each configured source to verify URLs</div></div>
+    </div>
+    <div class="card-body">
+      <div class="row">
+        <div class="field" style="flex:1;min-width:160px"><label class="field-label">TMDB ID</label>
+          <input id="src-test-tmdb" type="number" placeholder="e.g. 27205">
+          <span style="font-size:11px;color:var(--muted)">Movie: 27205 (Inception) · TV: 1396 (Breaking Bad), 37854 (One Piece)</span>
+        </div>
+        <div class="field"><label class="field-label">Media Type</label>
+          <select id="src-test-type">
+            <option value="movie">Movie</option>
+            <option value="tv">TV Series</option>
+          </select>
+        </div>
+        <div class="field" id="src-test-season-f" style="display:none"><label class="field-label">Season</label>
+          <input id="src-test-season" type="number" min="1" value="1" style="width:70px">
+        </div>
+        <div class="field" id="src-test-ep-f" style="display:none"><label class="field-label">Episode</label>
+          <input id="src-test-ep" type="number" min="1" value="1" style="width:70px">
+        </div>
+      </div>
+      <div class="actions" style="margin-bottom:10px">
+        <button type="button" class="btn btn-ghost" onclick="sourcesTest()">&#9654; Test</button>
+      </div>
+      <div id="src-test-results"></div>
+    </div>
+  </div>
+  <div class="actions">
+    <button type="submit" class="btn btn-primary">&#10003; Save Sources</button>
+  </div>
+</form>
+<script>{src_js}</script>"""
+
+
+def tasks_card(config: dict[str, Any]) -> str:
+    return f"""
+    <div class="card" id="tasks">
       <div class="card-header">
-        <div><div class="card-title">Sources</div><div class="card-desc">HLS source resolution order and source definitions</div></div>
+        <div><div class="card-title">Tasks</div><div class="card-desc">TMDB API key for title and episode lookups</div></div>
       </div>
       <div class="card-body">
         <div class="row">
-          <div class="field"><label class="field-label">Source Order (comma-separated)</label>
-            <input name="source_order" value="{_attr(source_order)}" placeholder="kkphim,ophim"></div>
           <div class="field"><label class="field-label">TMDB API Key</label>
-            <input name="tmdb_api_key" type="password" value="{_attr(config["tmdb_api_key"])}" placeholder="Required for TVDB → TMDB lookup"></div>
-        </div>
-        <hr class="sep">
-        <div class="field"><label class="field-label">Direct HLS Template Sources (JSON)</label>
-          <textarea name="hls_template_sources">{html.escape(templates)}</textarea>
+            <input name="tmdb_api_key" type="password" value="{_attr(config["tmdb_api_key"])}" placeholder="Required for title/year lookup and season expansion">
+            <span style="font-size:11px;color:var(--muted)">Get a free key at <a href="https://www.themoviedb.org/settings/api" target="_blank">themoviedb.org</a></span>
+          </div>
         </div>
       </div>
     </div>"""
@@ -331,6 +489,7 @@ def settings_card(config: dict[str, Any], ffmpeg_args: str, active_tab: str) -> 
         ("radarr", "Radarr"),
         ("sonarr", "Sonarr"),
         ("worker", "Worker"),
+        ("tasks", "Tasks"),
         ("output", "Output"),
         ("indexer", "Indexer"),
         ("downloader", "Download Client"),
@@ -370,6 +529,15 @@ def settings_card(config: dict[str, Any], ffmpeg_args: str, active_tab: str) -> 
       {worker_card(config)}
       <div class="actions">
         <button type="submit" class="btn btn-primary">&#10003; Save Worker</button>
+      </div>
+    </form>"""
+    elif active_tab == "tasks":
+        form = f"""
+    <form method="post" action="/save">
+      <input type="hidden" name="_section" value="tasks">
+      {tasks_card(config)}
+      <div class="actions">
+        <button type="submit" class="btn btn-primary">&#10003; Save Tasks</button>
       </div>
     </form>"""
     elif active_tab == "output":

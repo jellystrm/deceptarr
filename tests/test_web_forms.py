@@ -86,9 +86,15 @@ class TestFormToConfig:
         assert data["sonarr_url"] == "http://sonarr:8989"
         assert data["tmdb_api_key"] == "tmdb-key-123"
 
-    def test_source_order_csv(self, current):
+    def test_source_order_derived_from_hls_sources(self, current):
+        """source_order is now derived from the order of sources in hls_template_sources."""
+        import json
         form = self._base_form()
-        form["source_order"] = "kkphim, ophim, my-source"
+        form["hls_template_sources"] = json.dumps([
+            {"name": "kkphim", "movie_url_template": ""},
+            {"name": "ophim", "movie_url_template": ""},
+            {"name": "my-source", "movie_url_template": ""},
+        ])
         data = form_to_config(form, current)
         assert data["source_order"] == ["kkphim", "ophim", "my-source"]
 

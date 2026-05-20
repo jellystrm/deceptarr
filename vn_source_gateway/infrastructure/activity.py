@@ -20,6 +20,7 @@ class ActivityEvent:
     ref: str = ""      # job_id for correlation
     results: list = field(default_factory=list)  # release titles for search events
     url: str = ""      # full torznab query URL for search events
+    grabs: list = field(default_factory=list)    # [{title, token}] per release — for manual download
 
 
 class ActivityLog:
@@ -51,10 +52,10 @@ class ActivityLog:
             instance._events = _load(path)
 
     def add(self, kind: str, title: str, detail: str = "", status: str = "", ref: str = "",
-            results: list | None = None, url: str = "") -> None:
+            results: list | None = None, url: str = "", grabs: list | None = None) -> None:
         event = ActivityEvent(ts=int(time.time()), kind=kind, title=title,
                               detail=detail, status=status, ref=ref,
-                              results=results or [], url=url)
+                              results=results or [], url=url, grabs=grabs or [])
         with self._mu:
             self._events.append(event)
             if len(self._events) > _MAX:
@@ -81,6 +82,7 @@ def _load(path: str) -> list[ActivityEvent]:
         for item in raw:
             item.setdefault("results", [])
             item.setdefault("url", "")
+            item.setdefault("grabs", [])
             events.append(ActivityEvent(**{k: item[k] for k in ActivityEvent.__dataclass_fields__ if k in item}))
         return events
     except Exception:

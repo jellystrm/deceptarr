@@ -62,6 +62,7 @@ class GatewayRelease:
     season_number: int | None = None
     episode_number: int | None = None
     server_label: str = ""
+    container: str | None = None  # per-job container override (mkv/mp4); None = use global default
 
 
 @dataclass(frozen=True)

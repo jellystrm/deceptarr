@@ -149,6 +149,7 @@ def decode_release(token: str) -> GatewayRelease:
     data = json.loads(raw.decode("utf-8"))
     # Backward compat: tokens encoded before server_label was added
     data.setdefault("server_label", "")
+    data.setdefault("container", None)
     return GatewayRelease(**data)
 
 
