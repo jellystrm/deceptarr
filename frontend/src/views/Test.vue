@@ -93,7 +93,7 @@
           <div class="run-output-head">
             <div>
               <h3>Run output <span>{{ lastRun ? '· ' + lastRun : '' }}</span></h3>
-              <p class="desc">LinkGrabber and source trace output from the latest test actions.</p>
+              <p class="desc">{{ outputDescription }}</p>
             </div>
             <button class="btn ghost sm" @click="clearLog">Clear</button>
           </div>
@@ -154,6 +154,7 @@ const testingGrabber = ref(false)
 const resolving = ref(false)
 const logLines = ref<LogLine[]>([])
 const lastRun = ref('')
+const outputMode = ref<'idle' | 'grabber' | 'resolve'>('idle')
 const logEl = ref<HTMLElement | null>(null)
 
 const DEFAULTS = {
@@ -162,6 +163,11 @@ const DEFAULTS = {
 } as const
 
 const defaults = computed(() => DEFAULTS[mediaType.value])
+const outputDescription = computed(() => {
+  if (outputMode.value === 'grabber') return 'Test Grabber result and generated fake grab options.'
+  if (outputMode.value === 'resolve') return 'Resolve Sources result with source URLs and trace lines.'
+  return 'Run Test Grabber or Resolve sources to see the matching output here.'
+})
 
 const payload = computed<SourceTestRequest>(() => {
   const p: SourceTestRequest = {
@@ -199,7 +205,17 @@ function addLog(cls: string, text: string) {
   })
 }
 
-function clearLog() { logLines.value = [] }
+function clearLog() {
+  logLines.value = []
+  lastRun.value = ''
+  outputMode.value = 'idle'
+}
+
+function beginOutput(mode: 'grabber' | 'resolve') {
+  outputMode.value = mode
+  logLines.value = []
+  lastRun.value = ''
+}
 
 function applyResult(name: string, result: HealthResult, log = true) {
   const tile = tiles.find(t => t.name === name)
@@ -243,19 +259,19 @@ async function runSingle(name: string) {
   const tile = tiles.find(t => t.name === name)
   if (!tile) return
   tile.status = 'loading'; tile.dotClass = 'gray'
-  addLog('l-info', `Testing ${name}...`)
   try {
     const results = await getHealth()
     const result = results[name]
-    if (result) applyResult(name, result)
+    if (result) applyResult(name, result, false)
   } catch (e) {
     tile.status = 'error'; tile.dotClass = 'red'
-    addLog('l-err', `${name} -> ${e}`)
+    tile.message = String(e)
   }
 }
 
 async function fakeGrabber() {
   testingGrabber.value = true
+  beginOutput('grabber')
   addLog('l-info', `Adding fake LinkGrabber entry for ${describePayload()}...`)
   try {
     const res = await testGrabber(payload.value)
@@ -272,6 +288,7 @@ async function fakeGrabber() {
 
 async function resolveSources() {
   resolving.value = true
+  beginOutput('resolve')
   addLog('l-info', `Resolving ${describePayload()} on kkphim, ophim, nguonc...`)
   try {
     const results = await sourceTest(payload.value)
