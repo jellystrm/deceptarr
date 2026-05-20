@@ -72,6 +72,7 @@ export type Config = Record<string, unknown>
 
 async function get<T>(path: string): Promise<T> {
   const r = await fetch(path, { cache: 'no-store' })
+  if (r.status === 401) { window.location.replace('/login'); throw new Error('Unauthorized') }
   if (!r.ok) throw new Error(`${r.status} ${r.statusText}`)
   return r.json()
 }
@@ -82,6 +83,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
+  if (r.status === 401) { window.location.replace('/login'); throw new Error('Unauthorized') }
   if (!r.ok) throw new Error(`${r.status} ${r.statusText}`)
   return r.json()
 }
@@ -96,6 +98,12 @@ async function postForm(path: string, form: Record<string, string>): Promise<voi
 }
 
 // ─── Public API ───────────────────────────────────────────────────────────────
+
+export interface AuthStatus { initialized: boolean; authenticated: boolean }
+export const getAuthStatus   = ()  => fetch('/api/auth/status', { cache: 'no-store' }).then(r => r.json()) as Promise<AuthStatus>
+export const authSetup       = (username: string, password: string) => post<{ status: string; error?: string }>('/api/auth/setup', { username, password })
+export const authLogin       = (username: string, password: string) => post<{ status: string; error?: string }>('/api/auth/login', { username, password })
+export const authLogout      = () => fetch('/api/auth/logout', { method: 'POST' })
 
 export const getConfig       = ()  => get<Config>('/api/config')
 export const getPipeline     = ()  => get<PipelineJob[]>('/api/pipeline')

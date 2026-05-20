@@ -274,6 +274,8 @@ class Settings:
     public_base_url: str = ""
     qb_username: str = "admin"
     qb_password: str = "adminadmin"
+    auth_username: str = ""
+    auth_password_hash: str = ""
 
     # ── External ───────────────────────────────────────────────────────────────
     tmdb_api_key: str = ""
@@ -435,6 +437,8 @@ class Settings:
             public_base_url=raw_public,
             qb_username=qb_username,
             qb_password=qb_password,
+            auth_username=str(_file_value(file_data, "auth_username", "")),
+            auth_password_hash=str(_file_value(file_data, "auth_password_hash", "")),
             tmdb_api_key=tmdb_api_key,
             jellyfin_scan_after_strm=bool(_file_value(file_data, "jellyfin_scan_after_strm", False)),
             download_container=str(_file_value(file_data, "download_container", "mkv")),
@@ -486,6 +490,8 @@ class Settings:
             "public_base_url": self.public_base_url,
             "qb_username": self.qb_username,
             "qb_password": self.qb_password,
+            "auth_username": self.auth_username,
+            "auth_password_hash": self.auth_password_hash,
             "tmdb_api_key": self.tmdb_api_key,
             "jellyfin_scan_after_strm": self.jellyfin_scan_after_strm,
             "download_container": self.download_container,
