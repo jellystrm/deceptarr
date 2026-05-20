@@ -132,6 +132,14 @@ def test_resolves_movie_from_nguonc_schema():
     assert any("/api/film/ke-danh-cap-giac-mo" in line for line in source._last_log)
 
 
+def test_search_uses_plus_encoded_keyword():
+    source = _source()
+    with patch.object(source.session, "get", return_value=_search_response([])) as mock_get:
+        assert source._search("one piece") == []
+    assert mock_get.call_args.args[0] == "https://phim.nguonc.com/api/films/search?keyword=one+piece"
+    assert "params" not in mock_get.call_args.kwargs
+
+
 def test_resolves_episode_and_skips_wrong_season(tmdb_single_season):
     source = _source()
     wrong_season = {

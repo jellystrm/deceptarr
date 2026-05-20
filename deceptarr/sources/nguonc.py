@@ -3,6 +3,7 @@ from __future__ import annotations
 import logging
 import re
 from typing import Any
+from urllib.parse import urlencode
 
 import requests
 
@@ -215,9 +216,9 @@ class NguonCSource(Source):
         return None
 
     def _search(self, keyword: str) -> list[dict[str, Any]]:
-        url = f"{self.base_url}/api/films/search"
+        url = f"{self.base_url}/api/films/search?{urlencode({'keyword': keyword})}"
         try:
-            r = self.session.get(url, params={"keyword": keyword}, timeout=20)
+            r = self.session.get(url, timeout=20)
             r.raise_for_status()
             data = r.json() or {}
             items = data.get("items")
