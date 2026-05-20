@@ -1,8 +1,24 @@
 __pycache__/
 *.py[cod]
 .venv/
+.idea/
+.vscode/
 state/
 downloads/
 .local/
 .env
 
+# Build artifacts
+dist/
+frontend/
+frontend/dist/
+
+# Claude AI worktrees
+.claude/
+.cache/
+
+# Generated API stubs
+deceptarr/api/
+
+# Runtime artifacts
+output/
