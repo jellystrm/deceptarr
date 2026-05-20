@@ -29,6 +29,14 @@ Open:
 http://localhost:8765
 ```
 
+## Build Container Image
+
+Docker image publishing is manual to avoid rebuilding GHCR packages on every commit:
+
+```bash
+gh workflow run docker.yml --repo jellystrm/deceptarr --ref main
+```
+
 ## Add To Radarr/Sonarr
 
 Add the indexer:
