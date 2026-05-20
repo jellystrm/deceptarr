@@ -1,5 +1,5 @@
 <template>
-  <div>
+  <div class="test-page">
     <div class="page-head">
       <div>
         <h1>Test</h1>
@@ -7,7 +7,7 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card health-card">
       <div class="card-head">
         <div>
           <h2>Health</h2>
@@ -38,7 +38,7 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card testing-card">
       <div class="card-head">
         <div>
           <h2>Testing</h2>
@@ -49,7 +49,7 @@
         <div class="form-grid">
           <div class="field">
             <label>TMDB ID</label>
-            <input v-model="tmdbId" class="input mono" type="number" placeholder="27205" />
+            <input v-model="tmdbId" class="input mono" type="number" :placeholder="defaults.tmdbId" />
           </div>
           <div class="field">
             <label>Media type</label>
@@ -60,11 +60,11 @@
           </div>
           <div class="field wide">
             <label>Title</label>
-            <input v-model="title" class="input" placeholder="One Piece" />
+            <input v-model="title" class="input" :placeholder="defaults.title" />
           </div>
           <div class="field">
             <label>Year</label>
-            <input v-model="year" class="input mono" type="number" placeholder="1999" />
+            <input v-model="year" class="input mono" type="number" :placeholder="defaults.year" />
           </div>
           <template v-if="mediaType === 'tv'">
             <div class="field">
@@ -88,24 +88,22 @@
             {{ resolving ? 'Resolving...' : 'Resolve sources' }}
           </button>
         </div>
-      </div>
-    </div>
 
-    <div class="card">
-      <div class="card-head">
-        <div>
-          <h2>Run output <span style="color:var(--text-3);font-weight:500">{{ lastRun ? '· ' + lastRun : '' }}</span></h2>
-          <p class="desc">Health, LinkGrabber, and source trace output from the latest test actions.</p>
-        </div>
-        <button class="btn ghost sm" @click="clearLog">Clear</button>
-      </div>
-      <div class="card-body" style="padding:14px 16px">
-        <div class="testlog" ref="logEl">
-          <div v-if="!logLines.length" class="l-info">
-            <span class="ts">-</span>No test action has run yet.
+        <div class="run-output">
+          <div class="run-output-head">
+            <div>
+              <h3>Run output <span>{{ lastRun ? '· ' + lastRun : '' }}</span></h3>
+              <p class="desc">LinkGrabber and source trace output from the latest test actions.</p>
+            </div>
+            <button class="btn ghost sm" @click="clearLog">Clear</button>
           </div>
-          <div v-for="(line, i) in logLines" :key="i" :class="line.cls">
-            <span class="ts">{{ line.ts }}</span>{{ line.text }}
+          <div class="testlog" ref="logEl">
+            <div v-if="!logLines.length" class="l-info">
+              <span class="ts">-</span>No test action has run yet.
+            </div>
+            <div v-for="(line, i) in logLines" :key="i" :class="line.cls">
+              <span class="ts">{{ line.ts }}</span>{{ line.text }}
+            </div>
           </div>
         </div>
       </div>
@@ -144,8 +142,8 @@ const tiles = reactive<Tile[]>(
   }))
 )
 
-const tmdbId = ref('27205')
 const mediaType = ref<'movie' | 'tv'>('movie')
+const tmdbId = ref('')
 const title = ref('')
 const year = ref('')
 const season = ref('')
@@ -158,14 +156,21 @@ const logLines = ref<LogLine[]>([])
 const lastRun = ref('')
 const logEl = ref<HTMLElement | null>(null)
 
+const DEFAULTS = {
+  movie: { tmdbId: '27205', title: 'Inception', year: '2010' },
+  tv: { tmdbId: '37854', title: 'One Piece', year: '1999' },
+} as const
+
+const defaults = computed(() => DEFAULTS[mediaType.value])
+
 const payload = computed<SourceTestRequest>(() => {
   const p: SourceTestRequest = {
     media_type: mediaType.value,
   }
-  const id = intVal(tmdbId.value)
-  const yr = intVal(year.value)
+  const id = intVal(valueOrDefault(tmdbId.value, defaults.value.tmdbId))
+  const yr = intVal(valueOrDefault(year.value, defaults.value.year))
   if (id !== undefined) p.tmdb_id = id
-  if (title.value.trim()) p.title = title.value.trim()
+  p.title = valueOrDefault(title.value, defaults.value.title)
   if (yr !== undefined) p.year = yr
   if (mediaType.value === 'tv') {
     p.season = intVal(season.value) ?? 1
@@ -173,6 +178,10 @@ const payload = computed<SourceTestRequest>(() => {
   }
   return p
 })
+
+function valueOrDefault(value: string, fallback: string) {
+  return value.trim() || fallback
+}
 
 function intVal(value: string): number | undefined {
   const n = Number(value)
@@ -311,6 +320,9 @@ onMounted(() => runHealth(false))
 </script>
 
 <style scoped>
+.test-page > .card + .card {
+  margin-top: 18px;
+}
 .test-grid {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
@@ -362,6 +374,26 @@ onMounted(() => runHealth(false))
 }
 .input:focus, .select:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(94,224,189,.12); }
 .action-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
+.run-output {
+  margin-top: 22px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+.run-output-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.run-output h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.run-output h3 span {
+  color: var(--text-3);
+  font-weight: 500;
+}
 .testlog {
   height: 340px;
   overflow: auto;

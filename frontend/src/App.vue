@@ -86,7 +86,11 @@
       </header>
 
       <div class="content">
-        <router-view />
+        <router-view v-slot="{ Component }">
+          <KeepAlive>
+            <component :is="Component" />
+          </KeepAlive>
+        </router-view>
       </div>
 
       <footer class="statusbar">
