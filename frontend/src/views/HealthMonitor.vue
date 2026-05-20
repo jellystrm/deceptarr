@@ -2,7 +2,7 @@
   <div class="test-page">
     <div class="page-head">
       <div>
-        <h1>Test</h1>
+        <h1>Health & Monitor</h1>
         <p class="sub">Check service health, fake LinkGrabber entries, and trace source resolution from one place.</p>
       </div>
     </div>

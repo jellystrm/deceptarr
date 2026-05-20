@@ -53,13 +53,13 @@
           <span>Settings</span>
         </router-link>
 
-        <router-link to="/test" class="nav-item" active-class="active">
+        <router-link to="/health-monitor" class="nav-item" active-class="active">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <path d="M9 2v6l-4 8a4 4 0 0 0 3.5 6h7a4 4 0 0 0 3.5-6l-4-8V2"/>
             <line x1="8" y1="2" x2="16" y2="2"/>
             <line x1="7.5" y1="14" x2="16.5" y2="14"/>
           </svg>
-          <span>Test</span>
+          <span>Health & Monitor</span>
         </router-link>
       </nav>
 
@@ -143,7 +143,7 @@ const pageTitles: Record<string, string> = {
   '/downloads':   'Downloads',
   '/sources':     'Sources',
   '/settings':    'Settings',
-  '/test':        'Test',
+  '/health-monitor': 'Health & Monitor',
 }
 
 const pageTitle = computed(() => {

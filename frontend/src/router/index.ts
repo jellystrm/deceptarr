@@ -3,7 +3,7 @@ import Downloads from '../views/Downloads.vue'
 import LinkGrabber from '../views/LinkGrabber.vue'
 import Sources from '../views/Sources.vue'
 import Settings from '../views/Settings.vue'
-import Test from '../views/Test.vue'
+import HealthMonitor from '../views/HealthMonitor.vue'
 import Login from '../views/Login.vue'
 import Setup from '../views/Setup.vue'
 import { getAuthStatus } from '../api'
@@ -18,7 +18,8 @@ const router = createRouter({
     { path: '/linkgrabber', component: LinkGrabber },
     { path: '/sources',     component: Sources },
     { path: '/settings',    component: Settings },
-    { path: '/test',        component: Test },
+    { path: '/health-monitor', component: HealthMonitor },
+    { path: '/test',        redirect: '/health-monitor' },
     { path: '/login',       component: Login },
     { path: '/setup',       component: Setup },
   ],
