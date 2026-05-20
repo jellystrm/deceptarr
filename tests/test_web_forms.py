@@ -90,6 +90,7 @@ class TestFormToConfig:
         """source_order is now derived from the order of sources in hls_template_sources."""
         import json
         form = self._base_form()
+        form["_section"] = "sources"
         form["hls_template_sources"] = json.dumps([
             {"name": "kkphim", "movie_url_template": ""},
             {"name": "ophim", "movie_url_template": ""},
@@ -97,6 +98,19 @@ class TestFormToConfig:
         ])
         data = form_to_config(form, current)
         assert data["source_order"] == ["kkphim", "ophim", "my-source"]
+
+    def test_source_order_json_preserves_built_in_source_order(self, current):
+        import json
+        form = self._base_form()
+        form["_section"] = "sources"
+        form["hls_template_sources"] = json.dumps([
+            {"name": "my-source", "movie_url_template": ""},
+        ])
+        form["source_order_json"] = json.dumps(["ophim", "my-source", "kkphim", "nguonc"])
+
+        data = form_to_config(form, current)
+
+        assert data["source_order"] == ["ophim", "my-source", "kkphim", "nguonc"]
 
     def test_checkboxes_present(self, current):
         form = self._base_form()

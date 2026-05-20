@@ -146,70 +146,122 @@ def media_managers_card(config: dict[str, Any]) -> str:
 
 
 def sources_card(config: dict[str, Any], templates: str, source_order: str) -> str:
-    """Sources page: JS-managed source list with priority, per-source mode/container, and test panel."""
-    import json as _json
+    """Sources page: combined priority list of built-in + custom sources, with reorder and test panel."""
+    from deceptarr.sources import BUILTIN_SOURCES, DEFAULT_SOURCE_ORDER
+
     sources_data = config.get("hls_template_sources", [])
-    # Serialize for JS injection — escape </script> to avoid breaking the tag
-    sources_json = _json.dumps(sources_data, ensure_ascii=False).replace("</", "<\\/")
+    custom_names = [s.get("name", "") for s in sources_data if s.get("name")]
+    configured_order = config.get("source_order", DEFAULT_SOURCE_ORDER)
+    all_available = set(list(BUILTIN_SOURCES.keys()) + custom_names)
+    # Preserve user-defined order, then append any new sources not yet listed.
+    initial_order: list[str] = [n for n in configured_order if n in all_available]
+    for n in list(BUILTIN_SOURCES.keys()) + custom_names:
+        if n not in initial_order:
+            initial_order.append(n)
+
+    sources_json = json.dumps(sources_data, ensure_ascii=False).replace("</", "<\\/")
+    order_json = json.dumps(initial_order, ensure_ascii=False).replace("</", "<\\/")
+    builtin_info = {
+        name: {"url": url, "label": f"{name} ({url})"}
+        for name, url in BUILTIN_SOURCES.items()
+    }
+    builtin_info_js = json.dumps(builtin_info, ensure_ascii=False).replace("</", "<\\/")
 
     # --- JavaScript source manager ---
     src_js = (
         "(function(){"
-        "var S=" + sources_json + ";"
-        r"""
+        + "var S=" + sources_json + ";"
+        + "var ORDER=" + order_json + ";"
+        + "var BUILTIN=" + builtin_info_js + ";"
+        + r"""
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/"/g,'&quot;').replace(/</g,'&lt;').replace(/>/g,'&gt;');}
 function render(){
   var c=document.getElementById('src-list');
-  if(!S.length){c.innerHTML='<p style="color:var(--muted);font-size:13px;padding:8px 0">No sources yet. Click &quot;+ Add Source&quot;.</p>';}
-  else{c.innerHTML=S.map(function(s,i){return row(s,i);}).join('');}
+  if(!ORDER.length){c.innerHTML='<p style="color:var(--muted);font-size:13px;padding:8px 0">No sources configured. Click &quot;+ Add Source&quot; to add a custom source.</p>';sync();return;}
+  c.innerHTML=ORDER.map(function(name,oi){
+    if(BUILTIN[name])return builtinRow(name,oi);
+    var si=S.findIndex(function(s){return s.name===name;});
+    if(si<0)return '';
+    return customRow(S[si],si,oi);
+  }).join('');
   sync();
+}
+function builtinRow(name,oi){
+  var n=ORDER.length;
+  return '<div style="display:flex;align-items:center;gap:8px;padding:10px 0;border-bottom:1px solid var(--border)">'
+    +'<div style="min-width:20px;text-align:center;font-size:11px;color:var(--muted)">'+(oi+1)+'</div>'
+    +'<div style="display:flex;flex-direction:column;gap:2px">'
+    +'<button type="button" onclick="oUp('+oi+')" '+(oi===0?'disabled':'')+' style="padding:0 4px;font-size:12px;line-height:1.4;cursor:pointer">↑</button>'
+    +'<button type="button" onclick="oDn('+oi+')" '+(oi===n-1?'disabled':'')+' style="padding:0 4px;font-size:12px;line-height:1.4;cursor:pointer">↓</button>'
+    +'</div>'
+    +'<div style="flex:1;min-width:0;display:flex;align-items:center;gap:10px;flex-wrap:wrap">'
+    +'<span style="font-weight:500;font-size:14px">'+esc(name)+'</span>'
+    +'<span style="font-size:12px;color:var(--muted)">'+esc(BUILTIN[name].url)+'</span>'
+    +'<span style="background:rgba(99,179,237,0.15);color:#63b3ed;font-size:10px;font-weight:600;padding:2px 6px;border-radius:3px;text-transform:uppercase;letter-spacing:.5px">Built-in</span>'
+    +'</div>'
+    +'</div>';
 }
 function sel(val,opts){
   return opts.map(function(o){return '<option value="'+esc(o[0])+'"'+(val===o[0]?' selected':'')+'>'+esc(o[1])+'</option>';}).join('');
 }
-function row(s,i){
-  var n=S.length;
+function customRow(s,si,oi){
+  var n=ORDER.length;
   return '<div style="display:flex;align-items:flex-start;gap:8px;padding:10px 0;border-bottom:1px solid var(--border)">'
-    +'<div style="min-width:20px;text-align:center;font-size:11px;color:var(--muted);padding-top:28px">'+(i+1)+'</div>'
+    +'<div style="min-width:20px;text-align:center;font-size:11px;color:var(--muted);padding-top:28px">'+(oi+1)+'</div>'
     +'<div style="display:flex;flex-direction:column;gap:2px;padding-top:24px">'
-    +'<button type="button" onclick="sUp('+i+')" '+(i===0?'disabled':'')+' style="padding:0 4px;font-size:12px;line-height:1.4;cursor:pointer">↑</button>'
-    +'<button type="button" onclick="sDn('+i+')" '+(i===n-1?'disabled':'')+' style="padding:0 4px;font-size:12px;line-height:1.4;cursor:pointer">↓</button>'
+    +'<button type="button" onclick="oUp('+oi+')" '+(oi===0?'disabled':'')+' style="padding:0 4px;font-size:12px;line-height:1.4;cursor:pointer">↑</button>'
+    +'<button type="button" onclick="oDn('+oi+')" '+(oi===n-1?'disabled':'')+' style="padding:0 4px;font-size:12px;line-height:1.4;cursor:pointer">↓</button>'
     +'</div>'
     +'<div style="flex:1;min-width:0">'
     +'<div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:4px">'
     +'<div class="field" style="flex:1;min-width:140px"><label class="field-label">Name</label>'
-    +'<input value="'+esc(s.name||'')+'" oninput="sSet('+i+',\'name\',this.value)" placeholder="my-source"></div>'
-    +'<div class="field"><label class="field-label">Output</label><select onchange="sSet('+i+',\'output_mode\',this.value)">'
+    +'<input value="'+esc(s.name||'')+'" oninput="sSet('+si+',\'name\',this.value)" placeholder="my-source"></div>'
+    +'<div class="field"><label class="field-label">Output</label><select onchange="sSet('+si+',\'output_mode\',this.value)">'
     +sel(s.output_mode||'strm',[['strm','STRM (.strm)'],['download','Download (ffmpeg)']])
     +'</select></div>'
-    +'<div class="field"><label class="field-label">Container</label><select onchange="sSet('+i+',\'container\',this.value)">'
+    +'<div class="field"><label class="field-label">Container</label><select onchange="sSet('+si+',\'container\',this.value)">'
     +sel(s.container||'mkv',[['mkv','MKV'],['mp4','MP4']])
     +'</select></div>'
     +'</div>'
     +'<details style="margin-top:2px"><summary style="font-size:11px;color:var(--muted);cursor:pointer;user-select:none">URL templates</summary>'
     +'<div style="display:grid;gap:6px;margin-top:6px">'
     +'<div class="field"><label class="field-label">Movie URL template</label>'
-    +'<input value="'+esc(s.movie_url_template||'')+'" oninput="sSet('+i+',\'movie_url_template\',this.value)" placeholder="https://…/{tmdb_id}"></div>'
+    +'<input value="'+esc(s.movie_url_template||'')+'" oninput="sSet('+si+',\'movie_url_template\',this.value)" placeholder="https://…/{tmdb_id}"></div>'
     +'<div class="field"><label class="field-label">Series URL template</label>'
-    +'<input value="'+esc(s.series_url_template||'')+'" oninput="sSet('+i+',\'series_url_template\',this.value)" placeholder="https://…/{tmdb_id}/{season}/{episode}"></div>'
+    +'<input value="'+esc(s.series_url_template||'')+'" oninput="sSet('+si+',\'series_url_template\',this.value)" placeholder="https://…/{tmdb_id}/{season}/{episode}"></div>'
     +'<div class="field"><label class="field-label">Movie resolver URL</label>'
-    +'<input value="'+esc(s.movie_resolver_url_template||'')+'" oninput="sSet('+i+',\'movie_resolver_url_template\',this.value)" placeholder="Returns JSON {hls_url:…}"></div>'
+    +'<input value="'+esc(s.movie_resolver_url_template||'')+'" oninput="sSet('+si+',\'movie_resolver_url_template\',this.value)" placeholder="Returns JSON {hls_url:…}"></div>'
     +'<div class="field"><label class="field-label">Series resolver URL</label>'
-    +'<input value="'+esc(s.series_resolver_url_template||'')+'" oninput="sSet('+i+',\'series_resolver_url_template\',this.value)" placeholder="Returns JSON {hls_url:…}"></div>'
+    +'<input value="'+esc(s.series_resolver_url_template||'')+'" oninput="sSet('+si+',\'series_resolver_url_template\',this.value)" placeholder="Returns JSON {hls_url:…}"></div>'
     +'</div></details>'
     +'</div>'
-    +'<button type="button" class="btn btn-danger btn-small" onclick="sRm('+i+')" style="align-self:center;margin-left:4px">×</button>'
+    +'<button type="button" class="btn btn-danger btn-small" onclick="sRm('+si+')" style="align-self:center;margin-left:4px">×</button>'
     +'</div>';
 }
-function sync(){var e=document.getElementById('hls-sources-json');if(e)e.value=JSON.stringify(S);}
-window.sUp=function(i){if(i===0)return;var t=S[i-1];S[i-1]=S[i];S[i]=t;render();};
-window.sDn=function(i){if(i>=S.length-1)return;var t=S[i+1];S[i+1]=S[i];S[i]=t;render();};
-window.sRm=function(i){if(!confirm('Remove "'+esc(S[i].name||'?')+'"?'))return;S.splice(i,1);render();};
-window.sSet=function(i,k,v){S[i][k]=v;sync();};
+function sync(){
+  var e=document.getElementById('hls-sources-json');if(e)e.value=JSON.stringify(S);
+  var o=document.getElementById('source-order-json');if(o)o.value=JSON.stringify(ORDER);
+}
+window.oUp=function(i){if(i===0)return;var t=ORDER[i-1];ORDER[i-1]=ORDER[i];ORDER[i]=t;render();};
+window.oDn=function(i){if(i>=ORDER.length-1)return;var t=ORDER[i+1];ORDER[i+1]=ORDER[i];ORDER[i]=t;render();};
+window.sSet=function(si,k,v){
+  var old=S[si][k];S[si][k]=v;
+  if(k==='name'){var oi=ORDER.indexOf(String(old));if(oi>=0)ORDER[oi]=v;}
+  sync();
+};
+window.sRm=function(si){
+  var name=S[si].name||'?';
+  if(!confirm('Remove "'+esc(name)+'"?'))return;
+  S.splice(si,1);
+  var oi=ORDER.indexOf(name);if(oi>=0)ORDER.splice(oi,1);
+  render();
+};
 window.srcAddNew=function(){
-  S.push({name:'new-source',output_mode:'strm',container:'mkv',
+  var nm='new-source';
+  S.push({name:nm,output_mode:'strm',container:'mkv',
           movie_url_template:'',series_url_template:'',
           movie_resolver_url_template:'',series_resolver_url_template:''});
+  ORDER.push(nm);
   render();
 };
 // media-type toggle for test panel
@@ -260,14 +312,15 @@ render();
   <div class="card" id="sources">
     <div class="card-header">
       <div><div class="card-title">Sources</div>
-      <div class="card-desc">Priority-ordered HLS sources — first match wins at grab time</div></div>
+      <div class="card-desc">Priority-ordered HLS sources — first match wins at grab time. Built-in sources (kkphim, ophim, nguonc) are always available; custom sources can override or supplement them.</div></div>
     </div>
     <div class="card-body">
       <div id="src-list"></div>
       <div class="actions" style="margin:10px 0 0">
-        <button type="button" class="btn btn-ghost" onclick="srcAddNew()">+ Add Source</button>
+        <button type="button" class="btn btn-ghost" onclick="srcAddNew()">+ Add Custom Source</button>
       </div>
       <input type="hidden" name="hls_template_sources" id="hls-sources-json" value="{_attr(templates)}">
+      <input type="hidden" name="source_order_json" id="source-order-json" value="">
     </div>
   </div>
   <div class="card" id="source-test-card" style="margin-top:14px">

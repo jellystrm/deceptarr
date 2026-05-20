@@ -130,9 +130,20 @@ def form_to_config(form: dict[str, str], current: Settings) -> dict[str, Any]:
         templates = json.loads(templates_raw) if templates_raw else []
         if not isinstance(templates, list):
             raise ValueError("HLS template sources must be a JSON array")
-        # Derive source_order from the order of sources in the list
-        data["source_order"] = [str(s.get("name", "")).strip() for s in templates if s.get("name")]
         data["hls_template_sources"] = templates
+        parsed_source_order: list[str] | None = None
+        # source_order_json comes from the combined priority list in the UI (includes built-ins).
+        order_raw = form.get("source_order_json", "").strip()
+        if order_raw:
+            try:
+                order_list = json.loads(order_raw)
+                parsed_source_order = [str(n).strip() for n in order_list if str(n).strip()]
+            except Exception:
+                pass
+        # Fallback: derive from template source names (backward compat / tests).
+        if parsed_source_order is None:
+            parsed_source_order = [str(s.get("name", "")).strip() for s in templates if s.get("name")]
+        data["source_order"] = parsed_source_order
         return data
 
     if section == "tasks":

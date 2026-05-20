@@ -33,6 +33,6 @@ services:
 
       # Thư mục phim và series (Phải giống hệt Jellyfin)
       - /srv/mergerfs/MainPool/Phim:/movies
-      - /srv/mergerfs/MainPool/Series:/shows
+      - "/srv/mergerfs/MainPool/Phim/TV Shows:/series"
 
     restart: unless-stopped
