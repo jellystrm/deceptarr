@@ -36,6 +36,7 @@ class NguonCSource(Source):
         self.session = requests.Session()
         self.session.headers.update({"Accept": "application/json"})
         self._last_log: list[str] = []
+        self._last_hits: list[SourceHit] = []
 
     def _trace(self, message: str) -> None:
         self._last_log.append(message)
@@ -45,6 +46,7 @@ class NguonCSource(Source):
             f"source={self.name} base={self.base_url}",
             f"movie input: title={movie.title!r}, year={movie.year}, tmdb_id={movie.tmdb_id}",
         ]
+        self._last_hits = []
         tmdb_info = TmdbSeriesInfo(series_year=movie.year or 0)
         extra_kws: list[str] = []
         if movie.tmdb_id and self.tmdb.enabled:
@@ -89,10 +91,11 @@ class NguonCSource(Source):
                     rejected.append((str(name), detail_score))
                     self._trace(f"detail rejected: {name!r} score={detail_score} need>=1000")
                     continue
-                hit = self._first_hls(detail, movie.server_label)
-                if hit:
-                    self._trace(f"matched {name!r} score={detail_score}")
-                    return hit
+                hits = self._all_hls(detail, movie.server_label)
+                self._last_hits = hits
+                if hits:
+                    self._trace(f"matched {name!r} score={detail_score}; HLS candidates={len(hits)}")
+                    return hits[0]
                 self._trace(f"matched {name!r} score={detail_score}, but no m3u8 found")
 
         if rejected:
@@ -104,6 +107,10 @@ class NguonCSource(Source):
             self._trace("no matching movie found")
         return None
 
+    def resolve_movie_all(self, movie: MovieWanted) -> list[SourceHit]:
+        self.resolve_movie(movie)
+        return list(self._last_hits)
+
     def resolve_episode(self, episode: EpisodeWanted) -> SourceHit | None:
         self._last_log = [
             f"source={self.name} base={self.base_url}",
@@ -112,6 +119,7 @@ class NguonCSource(Source):
                 f"tmdb_id={episode.tmdb_id}, S{episode.season_number:02d}E{episode.episode_number:02d}"
             ),
         ]
+        self._last_hits = []
         tmdb_info = TmdbSeriesInfo(series_year=episode.year or 0)
         if episode.tmdb_id and self.tmdb.enabled:
             self._trace(f"TMDB metadata lookup enabled for tv/{episode.tmdb_id}")
@@ -165,14 +173,16 @@ class NguonCSource(Source):
                 tmdb_info,
                 slug,
             )
-            hit = self._episode_hls(detail, episode.season_number, episode.episode_number, detected, episode.server_label)
-            if hit:
+            hits = self._episode_hls(detail, episode.season_number, episode.episode_number, detected, episode.server_label)
+            self._last_hits = hits
+            if hits:
                 suffix = f" via {via}" if via else ""
                 self._trace(
                     f"S{episode.season_number:02d}E{episode.episode_number:02d} "
-                    f"from slug={slug!r} detected_season={detected} score={detail_score}{suffix}"
+                    f"from slug={slug!r} detected_season={detected} score={detail_score}{suffix}; "
+                    f"HLS candidates={len(hits)}"
                 )
-                return hit
+                return hits[0]
             self._trace(f"episode not found in slug={slug!r} detected_season={detected} score={detail_score}")
             return None
 
@@ -214,6 +224,10 @@ class NguonCSource(Source):
                 f"episode S{episode.season_number:02d}E{episode.episode_number:02d} not found"
             )
         return None
+
+    def resolve_episode_all(self, episode: EpisodeWanted) -> list[SourceHit]:
+        self.resolve_episode(episode)
+        return list(self._last_hits)
 
     def _search(self, keyword: str) -> list[dict[str, Any]]:
         url = f"{self.base_url}/api/films/search?{urlencode({'keyword': keyword})}"
@@ -301,14 +315,18 @@ class NguonCSource(Source):
         kw = _norm(server_label)
         return sorted(servers, key=lambda s: 0 if kw in _norm(str(s.get("server_name") or "")) else 1)
 
-    def _first_hls(self, detail: dict[str, Any], server_label: str = "") -> SourceHit | None:
+    def _all_hls(self, detail: dict[str, Any], server_label: str = "") -> list[SourceHit]:
         headers: dict[str, str] = {"Referer": f"{self.base_url}/"}
+        hits: list[SourceHit] = []
+        seen: set[str] = set()
         for server in self._sorted_servers(detail, server_label):
+            server_name = str(server.get("server_name") or "")
             for item in server.get("items") or []:
                 url = item.get("m3u8")
-                if url:
-                    return SourceHit(self.name, str(url), headers)
-        return None
+                if url and str(url) not in seen:
+                    seen.add(str(url))
+                    hits.append(SourceHit(self.name, str(url), headers, server_name=server_name, item_name=str(item.get("name") or "")))
+        return hits
 
     def _episode_hls(
         self,
@@ -317,12 +335,15 @@ class NguonCSource(Source):
         episode: int,
         detected_season: int | None,
         server_label: str = "",
-    ) -> SourceHit | None:
+    ) -> list[SourceHit]:
         if detected_season is not None and detected_season != season:
             self._trace(f"detail season mismatch: detected={detected_season}, requested={season}")
-            return None
+            return []
         headers: dict[str, str] = {"Referer": f"{self.base_url}/"}
+        hits: list[SourceHit] = []
+        seen: set[str] = set()
         for server in self._sorted_servers(detail, server_label):
+            server_name = str(server.get("server_name") or "")
             for item in server.get("items") or []:
                 url = item.get("m3u8")
                 if not url:
@@ -330,6 +351,7 @@ class NguonCSource(Source):
                 raw_name = str(item.get("name") or item.get("slug") or "")
                 match = re.search(r"\d+", raw_name)
                 number = int(match.group()) if match else 1
-                if number == episode:
-                    return SourceHit(self.name, str(url), headers)
-        return None
+                if number == episode and str(url) not in seen:
+                    seen.add(str(url))
+                    hits.append(SourceHit(self.name, str(url), headers, server_name=server_name, item_name=raw_name))
+        return hits

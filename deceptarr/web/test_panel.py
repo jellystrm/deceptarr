@@ -47,8 +47,13 @@ _RESOLVER_JS = r"""
             return '<div style="padding:1px 0">' + esc(line) + '</div>';
           }).join('');
           var detail = ok
-            ? '<a href="' + esc(r.url) + '" target="_blank" style="font-size:11px;word-break:break-all;color:var(--accent)">'
-              + esc(r.url.slice(0, 120) + (r.url.length > 120 ? '…' : '')) + '</a>'
+            ? (r.urls || [{url:r.url}]).map(function (u, idx) {
+                var label = (u.server || u.name) ? '<span style="color:var(--muted);font-size:10px;margin-right:6px">'
+                  + esc([u.server, u.name].filter(Boolean).join(' / ')) + '</span>' : '';
+                return '<div style="padding:1px 0">' + label
+                  + '<a href="' + esc(u.url) + '" target="_blank" style="font-size:11px;word-break:break-all;color:var(--accent)">'
+                  + esc((idx + 1) + '. ' + u.url.slice(0, 120) + (u.url.length > 120 ? '…' : '')) + '</a></div>';
+              }).join('')
             : '<span style="color:#e06c75;font-size:11px">' + esc(r.message || 'Not found') + '</span>';
           var logBlock = lines
             ? '<details style="margin-top:6px"><summary style="cursor:pointer;color:var(--muted);font-size:11px">trace log</summary>'

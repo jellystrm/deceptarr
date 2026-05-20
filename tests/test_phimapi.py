@@ -142,6 +142,27 @@ class TestResolveMovie:
         assert hit.hls_url == "https://cdn.example.com/avengers.m3u8"
         assert hit.source_name == "kkphim"
 
+    def test_resolve_movie_all_returns_all_server_links(self):
+        source = _source()
+        search_item = {
+            "name": "Avengers", "origin_name": "Avengers",
+            "type": "single", "year": 2012,
+            "tmdb": {"id": "24428"}, "slug": "avengers-2012",
+            "episode_current": "Full", "episode_total": 1,
+        }
+        detail = _detail_response(
+            "avengers-2012",
+            [
+                {"server_name": "Server A", "server_data": [{"name": "Full", "link_m3u8": "https://cdn/a.m3u8"}]},
+                {"server_name": "Server B", "server_data": [{"name": "Full", "link_m3u8": "https://cdn/b.m3u8"}]},
+            ],
+        )
+        with patch.object(source.session, "get") as mock_get:
+            mock_get.side_effect = [_search_response([search_item]), detail]
+            hits = source.resolve_movie_all(_movie())
+        assert [h.hls_url for h in hits] == ["https://cdn/a.m3u8", "https://cdn/b.m3u8"]
+        assert [h.server_name for h in hits] == ["Server A", "Server B"]
+
     def test_falls_back_to_tmdb_direct(self):
         source = _source()
         tmdb_resp = _tmdb_direct_response("avengers-direct")
@@ -219,6 +240,29 @@ class TestResolveEpisode:
                 hit = source.resolve_episode(_episode())
         assert hit is not None
         assert hit.hls_url == ep_url
+
+    def test_resolve_episode_all_returns_matching_links_from_all_servers(self, tmdb_single_season):
+        source = _source()
+        search_item = self._tv_search_item()
+        detail_resp = MagicMock()
+        detail_resp.status_code = 200
+        detail_resp.raise_for_status = MagicMock()
+        detail_resp.json.return_value = {
+            "status": True,
+            "movie": {"slug": "breaking-bad", "name": "Breaking Bad",
+                      "origin_name": "Breaking Bad", "year": 2008, "type": "series",
+                      "tmdb": {"id": "1396"}},
+            "episodes": [
+                {"server_name": "Server A", "server_data": [{"name": "1", "link_m3u8": "https://cdn/a-s01e01.m3u8"}]},
+                {"server_name": "Server B", "server_data": [{"name": "1", "link_m3u8": "https://cdn/b-s01e01.m3u8"}]},
+            ],
+        }
+        with patch.object(source.session, "get") as mock_get:
+            with patch.object(source.tmdb, "get_series_info", return_value=tmdb_single_season):
+                mock_get.side_effect = [_search_response([search_item]), detail_resp]
+                hits = source.resolve_episode_all(_episode())
+        assert [h.hls_url for h in hits] == ["https://cdn/a-s01e01.m3u8", "https://cdn/b-s01e01.m3u8"]
+        assert [h.server_name for h in hits] == ["Server A", "Server B"]
 
     def test_tmdb_direct_fallback_for_episode(self, tmdb_single_season):
         source = _source()

@@ -59,6 +59,7 @@ class PhimApiSource(Source):
         self.session = requests.Session()
         self.session.headers.update({"Accept": "application/json"})
         self._last_log: list[str] = []
+        self._last_hits: list[SourceHit] = []
 
     def _trace(self, message: str) -> None:
         self._last_log.append(message)
@@ -68,6 +69,7 @@ class PhimApiSource(Source):
             f"source={self.name} base={self.base_url}",
             f"movie input: title={movie.title!r}, year={movie.year}, tmdb_id={movie.tmdb_id}",
         ]
+        self._last_hits = []
         seen: set[str] = set()
         tmdb_info = TmdbSeriesInfo(series_year=movie.year or 0)
 
@@ -111,13 +113,14 @@ class PhimApiSource(Source):
                 self._trace(f"detail rejected: {name!r} score={s} need>=1000")
                 log.debug("%s movie '%s' detail score=%d (need 1000)", self.name, name, s)
                 return None
-            hit = self._first_hls(detail, server_label)
-            if hit:
+            hits = self._all_hls(detail, server_label)
+            self._last_hits = hits
+            if hits:
                 suffix = f" via {via}" if via else ""
-                self._trace(f"matched {name!r} score={s}{suffix}")
+                self._trace(f"matched {name!r} score={s}{suffix}; HLS candidates={len(hits)}")
             else:
                 self._trace(f"matched {name!r} score={s}, but no HLS link_m3u8 found")
-            return hit
+            return hits[0] if hits else None
 
         keywords = _keywords(movie.title, *_extra_kws)
         if keywords:
@@ -161,6 +164,10 @@ class PhimApiSource(Source):
 
         return None
 
+    def resolve_movie_all(self, movie: MovieWanted) -> list[SourceHit]:
+        self.resolve_movie(movie)
+        return list(self._last_hits)
+
     def resolve_episode(self, episode: EpisodeWanted) -> SourceHit | None:
         self._last_log = [
             f"source={self.name} base={self.base_url}",
@@ -170,6 +177,7 @@ class PhimApiSource(Source):
                 f"S{episode.season_number:02d}E{episode.episode_number:02d}"
             ),
         ]
+        self._last_hits = []
         tmdb_info = TmdbSeriesInfo(series_year=episode.year or 0)
         if episode.tmdb_id and self.tmdb.enabled:
             self._trace(f"TMDB metadata lookup enabled for tv/{episode.tmdb_id}")
@@ -195,15 +203,19 @@ class PhimApiSource(Source):
                 return None
             seen.add(slug)
             _entry_passed += 1
-            hit = self._episode_hls_from_slug(slug, episode.season_number, episode.episode_number, tmdb_info, assigned_season, server_label, episode.tvdb_id)
-            if hit:
+            hits = self._episode_hls_from_slug(slug, episode.season_number, episode.episode_number, tmdb_info, assigned_season, server_label, episode.tvdb_id)
+            self._last_hits = hits
+            if hits:
                 suffix = f" via {via}" if via else ""
-                self._trace(f"S{episode.season_number:02d}E{episode.episode_number:02d} from slug={slug!r}{suffix}")
+                self._trace(
+                    f"S{episode.season_number:02d}E{episode.episode_number:02d} "
+                    f"from slug={slug!r}{suffix}; HLS candidates={len(hits)}"
+                )
             else:
                 _rejected.append((slug, 0))
                 self._trace(f"episode not found in slug={slug!r}")
                 log.debug("%s episode not found in slug '%s'", self.name, slug)
-            return hit
+            return hits[0] if hits else None
 
         extra_kws: list[str] = []
         if tmdb_info.title:
@@ -262,6 +274,10 @@ class PhimApiSource(Source):
             )
 
         return None
+
+    def resolve_episode_all(self, episode: EpisodeWanted) -> list[SourceHit]:
+        self.resolve_episode(episode)
+        return list(self._last_hits)
 
     def _search(self, keyword: str) -> list[dict[str, Any]]:
         url = f"{self.base_url}/v1/api/tim-kiem"
@@ -348,14 +364,18 @@ class PhimApiSource(Source):
             out.extend(server.get("server_data") or [])
         return out
 
-    def _first_hls(self, detail: dict[str, Any], server_label: str = "") -> SourceHit | None:
+    def _all_hls(self, detail: dict[str, Any], server_label: str = "") -> list[SourceHit]:
         headers: dict[str, str] = {"Referer": f"{self.base_url}/"}
+        hits: list[SourceHit] = []
+        seen: set[str] = set()
         for server in self._sorted_servers(detail, server_label):
+            server_name = str(server.get("server_name") or "")
             for item in server.get("server_data") or []:
                 url = item.get("link_m3u8")
-                if url:
-                    return SourceHit(self.name, str(url), headers)
-        return None
+                if url and str(url) not in seen:
+                    seen.add(str(url))
+                    hits.append(SourceHit(self.name, str(url), headers, server_name=server_name, item_name=str(item.get("name") or "")))
+        return hits
 
     def _episode_hls_from_slug(
         self,
@@ -366,10 +386,10 @@ class PhimApiSource(Source):
         assigned_season: int | None,
         server_label: str = "",
         tvdb_id: int | None = None,
-    ) -> SourceHit | None:
+    ) -> list[SourceHit]:
         detail = self._detail(slug)
         if not detail:
-            return None
+            return []
 
         all_candidates = self._server_data(detail)
         unique_urls = {ep.get("link_m3u8") or ep.get("link_embed") for ep in all_candidates if ep.get("link_m3u8") or ep.get("link_embed")}
@@ -379,7 +399,7 @@ class PhimApiSource(Source):
                 f"slug={slug!r}: skipped, too many URLs ({len(unique_urls)} vs TMDB total {tmdb_info.total_episodes})"
             )
             log.debug("%s slug %s has too many episodes (%s vs tmdb %s)", self.name, slug, len(unique_urls), tmdb_info.total_episodes)
-            return None
+            return []
 
         movie_node = detail.get("movie") or {}
         s_year = _safe_int(movie_node.get("year"))
@@ -408,7 +428,9 @@ class PhimApiSource(Source):
                 pass
 
         seen_keys: set[tuple[str, int | None, str]] = set()
+        hits: list[SourceHit] = []
         for server in self._sorted_servers(detail, server_label):
+            server_name = str(server.get("server_name") or "")
             for ep_data in server.get("server_data") or []:
                 url = ep_data.get("link_m3u8")
                 if not url:
@@ -475,6 +497,6 @@ class PhimApiSource(Source):
                 if key not in seen_keys:
                     seen_keys.add(key)
                     log.debug("%s found S%02dE%02d in slug %s: %s", self.name, season, episode, slug, url)
-                    return SourceHit(self.name, url, {})
+                    hits.append(SourceHit(self.name, url, {}, server_name=server_name, item_name=ename))
 
-        return None
+        return hits

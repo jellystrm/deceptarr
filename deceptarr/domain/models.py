@@ -42,6 +42,8 @@ class SourceHit:
     source_name: str
     hls_url: str
     headers: dict[str, str]
+    server_name: str = ""
+    item_name: str = ""
 
 
 OutputMode = Literal["strm", "download"]

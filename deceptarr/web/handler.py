@@ -439,17 +439,25 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
                         wanted: MovieWanted | EpisodeWanted = MovieWanted(
                             radarr_id=0, title=title, year=year, tmdb_id=tmdb_id, imdb_id=None
                         )
-                        hit = source.resolve_movie(wanted)  # type: ignore[arg-type]
+                        hits = source.resolve_movie_all(wanted)  # type: ignore[arg-type]
                     else:
                         wanted = EpisodeWanted(
                             sonarr_episode_id=0, series_id=0, series_title=title, episode_title="",
                             year=year, tmdb_id=tmdb_id, tvdb_id=None, imdb_id=None,
                             season_number=season, episode_number=episode,
                         )
-                        hit = source.resolve_episode(wanted)  # type: ignore[arg-type]
+                        hits = source.resolve_episode_all(wanted)  # type: ignore[arg-type]
                     source_log = test_log + list(getattr(source, "_last_log", []))
-                    if hit:
-                        results[source_name] = {"status": "ok", "url": hit.hls_url, "log": source_log}
+                    if hits:
+                        urls = [
+                            {
+                                "url": hit.hls_url,
+                                "server": hit.server_name,
+                                "name": hit.item_name,
+                            }
+                            for hit in hits
+                        ]
+                        results[source_name] = {"status": "ok", "url": hits[0].hls_url, "urls": urls, "log": source_log}
                     else:
                         results[source_name] = {"status": "error", "message": "Not found", "log": source_log}
                 except Exception as exc:

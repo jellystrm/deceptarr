@@ -132,6 +132,31 @@ def test_resolves_movie_from_nguonc_schema():
     assert any("/api/film/ke-danh-cap-giac-mo" in line for line in source._last_log)
 
 
+def test_resolve_movie_all_returns_all_nguonc_server_links():
+    source = _source()
+    search_item = {
+        "name": "Ke Danh Cap Giac Mo",
+        "original_name": "Inception",
+        "slug": "ke-danh-cap-giac-mo",
+        "total_episodes": 1,
+        "current_episode": "FULL",
+    }
+    detail = _detail_response(
+        "ke-danh-cap-giac-mo",
+        name="Ke Danh Cap Giac Mo",
+        original_name="Inception",
+        episodes=[
+            {"server_name": "Vietsub #1", "items": [{"name": "Full", "m3u8": "https://cdn/a.m3u8"}]},
+            {"server_name": "Long Tieng", "items": [{"name": "Full", "m3u8": "https://cdn/b.m3u8"}]},
+        ],
+    )
+    with patch.object(source.session, "get") as mock_get:
+        mock_get.side_effect = [_search_response([search_item]), detail]
+        hits = source.resolve_movie_all(_movie())
+    assert [h.hls_url for h in hits] == ["https://cdn/a.m3u8", "https://cdn/b.m3u8"]
+    assert [h.server_name for h in hits] == ["Vietsub #1", "Long Tieng"]
+
+
 def test_search_uses_plus_encoded_keyword():
     source = _source()
     with patch.object(source.session, "get", return_value=_search_response([])) as mock_get:
