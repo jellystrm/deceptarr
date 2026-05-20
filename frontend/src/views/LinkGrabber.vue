@@ -233,14 +233,13 @@ function toMediaNode(ev: ActivityEvent): MediaNode {
 function mergeLinks(grabs: GrabToken[]): LinkOption[] {
   const map = new Map<string, LinkOption>()
   for (const grab of grabs) {
-    const key = [
-      grab.media_title || stripMode(grab.title),
-      grab.season || '',
-      grab.episode || '',
-      grab.source || '',
-      grab.server || '',
-      stripMode(grab.title),
-    ].join('|')
+    // Structured grabs (new format) include source + server fields → key by those.
+    // Old-style grabs only have title → key by stripped title so each is distinct.
+    const hasStructured = grab.source !== undefined || grab.server !== undefined
+    const key = hasStructured
+      ? [grab.media_title || '', grab.season ?? '', grab.episode ?? '', grab.source || '', grab.server || ''].join('|')
+      : stripMode(grab.title)
+
     const existing = map.get(key)
     const mode = grab.output_mode === 'download' ? 'download' : 'strm'
     if (existing) {
