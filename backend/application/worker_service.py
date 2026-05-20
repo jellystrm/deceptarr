@@ -65,6 +65,7 @@ class Worker:
             self._process_movies()
         if self.settings.series_enabled and self.sonarr.enabled:
             self._process_episodes()
+        self._prune_stale_jobs()
 
     def _process_movies(self) -> None:
         movies = self.radarr.missing_movies(self.settings.max_items_per_poll)
@@ -151,6 +152,65 @@ class Worker:
                 resolver=lambda source, item=episode: source.resolve_episode(item),
                 importer=lambda import_path: self.sonarr.import_path(import_path, self.settings.import_mode),
             )
+
+    def _prune_stale_jobs(self) -> None:
+        """Mark queued/error worker jobs as deleted when they are no longer wanted.
+
+        Handles the case where Radarr, Sonarr, or Jellyseerr removes a request
+        after Deceptarr already queued a job for it.  Without pruning, those
+        orphaned jobs pile up indefinitely.
+
+        Safety rules:
+        - Only prune *worker-created* jobs (job_id starts with movie: or episode:).
+          Torznab / manual-grab jobs use SHA1 hashes and are left untouched.
+        - Only prune jobs in ``queued`` or ``error`` state.
+          Running jobs are left alone; completed jobs are kept for history.
+        - If either arr cannot be reached, skip pruning that kind to avoid
+          accidentally deleting jobs due to a transient network error.
+        """
+        _BIG = 2000  # large enough for any realistic library
+        wanted_keys: set[str] = set()
+        queried_movie = False
+        queried_episode = False
+
+        if self.settings.movie_enabled and self.radarr.enabled:
+            try:
+                for m in self.radarr.missing_movies(_BIG):
+                    wanted_keys.add(m.key)
+                queried_movie = True
+            except Exception:
+                log.debug("Radarr unavailable — skipping movie stale-job pruning")
+
+        if self.settings.series_enabled and self.sonarr.enabled:
+            try:
+                for e in self.sonarr.missing_episodes(_BIG):
+                    wanted_keys.add(e.key)
+                queried_episode = True
+            except Exception:
+                log.debug("Sonarr unavailable — skipping episode stale-job pruning")
+
+        if not queried_movie and not queried_episode:
+            return
+
+        pruned = 0
+        for job in self.jobs.list_jobs():
+            if job.status not in {"queued", "error"} or job.paused:
+                continue
+            is_movie_job = job.job_id.startswith("movie:")
+            is_episode_job = job.job_id.startswith("episode:")
+            if not is_movie_job and not is_episode_job:
+                continue  # torznab / manual-grab job — leave untouched
+            if is_movie_job and not queried_movie:
+                continue  # Radarr unreachable — don't prune
+            if is_episode_job and not queried_episode:
+                continue  # Sonarr unreachable — don't prune
+            if job.job_id not in wanted_keys:
+                self.jobs.update(job.job_id, status="deleted")
+                log.info("Pruned stale job (no longer wanted): %s  title=%s", job.job_id, job.release.title)
+                pruned += 1
+
+        if pruned:
+            log.info("Pruned %d stale job(s) no longer in wanted lists", pruned)
 
     def _process_item(
         self,

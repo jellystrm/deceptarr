@@ -49,7 +49,7 @@
           <span class="node-title">{{ group.title }}</span>
           <span class="node-meta">{{ group.count }} tasks</span>
           <span :class="['pill', statusPill(group.status)]">{{ group.status }}</span>
-          <button class="icon-mini danger" title="Delete media tasks" @click.prevent="deleteJobs(group.jobIds)">
+          <button class="icon-mini danger" title="Delete media tasks" @click.stop="deleteJobs(group.jobIds)">
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </summary>
@@ -65,7 +65,7 @@
                 <span class="chev"></span>
                 <span class="node-title">{{ season.label }}</span>
                 <span class="node-meta">{{ season.count }} tasks</span>
-                <button class="icon-mini danger" title="Delete season tasks" @click.prevent="deleteJobs(season.jobIds)">
+                <button class="icon-mini danger" title="Delete season tasks" @click.stop="deleteJobs(season.jobIds)">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                 </button>
               </summary>
@@ -77,7 +77,7 @@
                     <span class="node-meta">{{ episode.jobs.length }} tasks</span>
                     <span :class="['pill', statusPill(episode.status)]">{{ episode.status }}</span>
                     <span class="episode-progress">{{ episode.progress }}%</span>
-                    <button class="icon-mini danger" title="Delete episode tasks" @click.prevent="deleteJobs(episode.jobIds)">
+                    <button class="icon-mini danger" title="Delete episode tasks" @click.stop="deleteJobs(episode.jobIds)">
                       <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     </button>
                   </summary>
