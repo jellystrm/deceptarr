@@ -67,7 +67,9 @@ async def source_test(request: Request) -> Response:
     year_raw = params.get("year")
     year = int(year_raw) if year_raw else None
 
-    all_eps_mode = (media_type == "tv" and season is not None and episode is None)
+    # all_eps_mode: TV series + no specific episode → scan the full season
+    # Works whether or not the user filled in the season field (defaults to S01)
+    all_eps_mode = (media_type == "tv" and episode is None)
     eff_season = season if season is not None else 1
     eff_episode = episode if episode is not None else 1
     test_log: list[str] = [
