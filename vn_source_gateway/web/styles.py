@@ -217,11 +217,85 @@ details[open] .pipe-detail summary::before { transform: rotate(90deg); }
 .sdot.ok  { background: var(--green); }
 .sdot.err { background: #e06c75; }
 .sdot.pending { background: var(--accent); }
+/* JDownloader-style dashboard */
+.main.dashboard { padding: 10px 14px 14px; }
+.jd-wrap {
+  display: flex; flex-direction: column;
+  height: calc(100vh - var(--topbar-h) - 36px);
+  border: 1px solid var(--border); border-radius: 8px;
+  overflow: hidden; background: var(--card-bg);
+}
+.jd-toolbar {
+  display: flex; align-items: center; gap: 2px;
+  padding: 5px 8px; background: var(--sidebar-bg);
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.jd-tb-btn {
+  height: 24px; padding: 0 8px;
+  border: 1px solid var(--border); border-radius: 3px;
+  background: var(--card-bg); cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  font-size: 12px; font-family: inherit; font-weight: 500;
+  color: var(--text); text-decoration: none; flex-shrink: 0; gap: 4px;
+}
+.jd-tb-btn:hover { background: rgba(255,255,255,0.08); border-color: var(--accent); }
+.jd-tb-btn:disabled { opacity: 0.35; cursor: default; }
+.jd-tb-sep { width: 1px; height: 16px; background: var(--border); margin: 0 4px; flex-shrink: 0; }
+.jd-tabbar {
+  display: flex; background: var(--sidebar-bg);
+  border-bottom: 1px solid var(--border); flex-shrink: 0;
+}
+.jd-tab {
+  padding: 7px 18px; cursor: pointer;
+  font-size: 12px; font-weight: 600;
+  border-right: 1px solid var(--border);
+  display: flex; align-items: center; gap: 6px;
+  user-select: none; white-space: nowrap; color: var(--muted);
+  transition: color 0.12s, background 0.12s;
+}
+.jd-tab:hover { background: rgba(255,255,255,0.03); color: var(--text); }
+.jd-tab.active {
+  background: var(--card-bg); color: var(--text);
+  border-bottom: 2px solid var(--accent); margin-bottom: -1px;
+}
+.jd-tab .jd-badge {
+  background: rgba(255,255,255,0.08); color: var(--muted);
+  font-size: 10px; font-weight: 700; padding: 1px 5px; border-radius: 8px;
+}
+.jd-tab.active .jd-badge { background: var(--accent-dim); color: var(--accent); }
+.jd-pane { flex: 1; overflow: auto; }
+.jd-pane .jd-empty {
+  color: var(--muted); font-size: 13px;
+  padding: 32px 20px; text-align: center;
+}
+.jd-statusbar {
+  background: var(--sidebar-bg); border-top: 1px solid var(--border);
+  padding: 4px 14px; font-size: 11px; color: var(--muted);
+  display: flex; gap: 0; flex-wrap: wrap; flex-shrink: 0; align-items: center;
+}
+.jd-sb-row { display: flex; gap: 18px; flex-wrap: wrap; padding: 2px 0; }
+.jd-sb-row + .jd-sb-row { border-top: 1px solid var(--border); margin-top: 2px; }
+.jd-stat { display: flex; gap: 4px; align-items: center; white-space: nowrap; }
+.jd-stat-val { color: var(--text); font-weight: 600; }
+/* JD table */
+.jd-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.jd-table th {
+  background: var(--sidebar-bg); padding: 5px 10px; text-align: left;
+  font-size: 10px; font-weight: 600; border-bottom: 1px solid var(--border);
+  color: var(--muted); white-space: nowrap;
+  position: sticky; top: 0; z-index: 1;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.jd-table td {
+  padding: 5px 10px; border-bottom: 1px solid var(--border); vertical-align: middle;
+}
+.jd-table tr:hover td { background: rgba(255,255,255,0.02); }
+.jd-table tr:last-child td { border-bottom: none; }
 /* Responsive */
 @media (max-width: 768px) {
   .sidebar { display: none; }
   .topbar, .main { margin-left: 0; }
   .row, .row.cols-3 { grid-template-columns: 1fr; }
-  #pipeline { grid-template-columns: 1fr !important; }
+  .jd-wrap { height: calc(100vh - var(--topbar-h) - 24px); border-radius: 0; border-left: none; border-right: none; }
 }
 """
