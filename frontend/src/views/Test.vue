@@ -48,15 +48,15 @@
       <div class="card-body">
         <div class="form-grid">
           <div class="field">
-            <label>TMDB ID</label>
-            <input v-model="tmdbId" class="input mono" type="number" :placeholder="defaults.tmdbId" />
-          </div>
-          <div class="field">
             <label>Media type</label>
             <select v-model="mediaType" class="select">
               <option value="movie">Movie</option>
               <option value="tv">TV Series</option>
             </select>
+          </div>
+          <div class="field">
+            <label>TMDB ID</label>
+            <input v-model="tmdbId" class="input mono" type="number" :placeholder="defaults.tmdbId" />
           </div>
           <div class="field">
             <label>Title</label>
