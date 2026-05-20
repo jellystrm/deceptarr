@@ -13,7 +13,7 @@ from deceptarr.infrastructure.config import Settings, save_settings
 from deceptarr.interfaces.download_clients import qbittorrent
 from deceptarr.interfaces.indexers.torznab import caps_response, search_response
 from .forms import form_to_config, parse_multipart, parse_multipart_files, read_urlencoded, test_connection, test_connections
-from .page import ALL_SECTIONS, SECTION_ALIASES, render_page
+from .page import render_page
 from .torrent import extract_announce, make_grab_torrent
 
 log = logging.getLogger(__name__)
@@ -31,12 +31,16 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
             path = parsed.path
             qs = parse_qs(parsed.query)
 
-            if path in {"/", "/index.html"}:
-                self._redirect("/dashboard")
-            elif path.lstrip("/") in ALL_SECTIONS:
-                section = path.lstrip("/")
-                settings_tab = qs.get("tab", [""])[0]
-                self._send_html(render_page(Settings.load(), "", section, settings_tab))
+            if path in {"/", "/index.html", "/dashboard"}:
+                tab = qs.get("tab", ["downloads"])[0]
+                stab = qs.get("stab", [""])[0]
+                msg = qs.get("msg", [""])[0]
+                self._send_html(render_page(Settings.load(), msg, tab, stab))
+            elif path == "/sources":
+                self._redirect("/?tab=sources")
+            elif path == "/settings":
+                stab = qs.get("tab", [""])[0]
+                self._redirect(f"/?tab=settings&stab={stab}" if stab else "/?tab=settings")
             elif path == "/api/config":
                 self._send_json(Settings.load().to_config_dict())
             elif path == "/api/jobs":
@@ -92,7 +96,7 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
                     test_connection("Sonarr", settings.sonarr_url, settings.sonarr_api_key)
                 else:
                     test_connections(settings)
-                self._redirect("/settings?tab=" + section)
+                self._redirect(f"/?tab=settings&stab={section}")
             elif path == "/tasks/bulk":
                 self._handle_tasks_bulk()
             elif path == "/api/manual-grab":
@@ -117,7 +121,7 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
                 # Regular form POST (browser navigation) → redirect as before.
                 accept = self.headers.get("Accept", "")
                 if "text/html" in accept:
-                    self._redirect("/dashboard")
+                    self._redirect("/")
                 else:
                     self._send_text("Ok.\n")
             elif path == "/api/v2/auth/login":
@@ -313,7 +317,7 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
                     qbittorrent.delete(settings, hashes)
             accept = self.headers.get("Accept", "")
             if "text/html" in accept:
-                self._redirect("/dashboard")
+                self._redirect("/")
             else:
                 self._send_text("Ok.\n")
 
@@ -344,7 +348,7 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
                 log.exception("manual-grab: enqueue failed for token=%r", token[:40])
             accept = self.headers.get("Accept", "")
             if "text/html" in accept:
-                self._redirect("/dashboard")
+                self._redirect("/")
             else:
                 self._send_text("Ok.\n")
 
@@ -377,7 +381,7 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
                     log.exception("manual-grab-bulk: failed for token %r", token[:40])
             accept = self.headers.get("Accept", "")
             if "text/html" in accept:
-                self._redirect("/dashboard")
+                self._redirect("/")
             else:
                 self._send_text("Ok.\n")
 
@@ -473,9 +477,8 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
 
 
 def _section_redirect(section: str) -> str:
-    if section in {"radarr", "sonarr", "worker", "tasks", "indexer", "downloader", "jellyfin"}:
-        return f"/settings?tab={section}"
+    if section in {"radarr", "sonarr", "worker", "tasks", "indexer", "downloader", "jellyfin", "runtime"}:
+        return f"/?tab=settings&stab={section}"
     if section == "sources":
-        return "/sources"
-    target = SECTION_ALIASES.get(section, section)
-    return f"/{target}"
+        return "/?tab=sources"
+    return "/"

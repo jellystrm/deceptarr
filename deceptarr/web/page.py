@@ -19,29 +19,15 @@ from .styles import CSS
 # preserving the open/closed state of every <details> panel so the user
 # doesn't lose their expanded rows on refresh.
 # ---------------------------------------------------------------------------
-_DASHBOARD_POLL_JS = r"""
+_APP_JS = r"""
 (function () {
   var INTERVAL = 5000;
+  var PIPELINE_TABS = ['linkgrabber', 'downloads'];
+  var ALL_TABS = ['linkgrabber', 'downloads', 'sources', 'settings'];
 
-  function openKeys() {
-    var keys = new Set();
-    document.querySelectorAll('#pipeline details[open]').forEach(function (d) {
-      var td = d.closest('td');
-      if (td) keys.add(td.textContent.trim().slice(0, 80));
-    });
-    return keys;
-  }
-  function restoreOpen(keys) {
-    document.querySelectorAll('#pipeline details').forEach(function (d) {
-      var td = d.closest('td');
-      if (td && keys.has(td.textContent.trim().slice(0, 80))) d.open = true;
-    });
-  }
-
-  // Track open package IDs (tree view)
   function openPkgIds() {
     var ids = [];
-    document.querySelectorAll('#pipeline .jd-tree-arr').forEach(function (a) {
+    document.querySelectorAll('.jd-tree-arr').forEach(function (a) {
       if (a.textContent.trim() === '▼') ids.push(a.id);
     });
     return ids;
@@ -50,29 +36,30 @@ _DASHBOARD_POLL_JS = r"""
     ids.forEach(function (arrowId) {
       var a = document.getElementById(arrowId);
       if (a && a.textContent.trim() === '▶') {
-        window.jdTogglePkg(arrowId.slice(7)); // strip 'jd-arr-'
+        window.jdTogglePkg(arrowId.slice(7));
       }
     });
   }
 
-  function activeTab() {
-    var a = document.querySelector('#pipeline .jd-tab.active');
-    return a ? a.dataset.tab : 'downloads';
-  }
-
-  window.jdSwitchTab = function(tab) {
-    document.querySelectorAll('#pipeline .jd-tab').forEach(function(t) {
+  window.jdSwitchTab = function (tab) {
+    document.querySelectorAll('.jd-tab').forEach(function (t) {
       t.classList.toggle('active', t.dataset.tab === tab);
     });
-    document.querySelectorAll('#pipeline .jd-pane').forEach(function(p) {
-      p.style.display = (p.id === 'jd-' + tab) ? '' : 'none';
+    ALL_TABS.forEach(function (t) {
+      var p = document.getElementById('jd-' + t);
+      if (p) p.style.display = t === tab ? '' : 'none';
     });
-    document.querySelectorAll('#pipeline .jd-statusbar').forEach(function(s) {
-      s.style.display = (s.id === 'jd-sb-' + tab) ? '' : 'none';
+    var isPipeline = PIPELINE_TABS.indexOf(tab) >= 0;
+    var toolbar = document.getElementById('jd-main-toolbar');
+    if (toolbar) toolbar.style.display = isPipeline ? '' : 'none';
+    PIPELINE_TABS.forEach(function (t) {
+      var sb = document.getElementById('jd-sb-' + t);
+      if (sb) sb.style.display = t === tab ? '' : 'none';
     });
+    history.replaceState(null, '', '/?tab=' + tab);
   };
 
-  window.jdTogglePkg = function(id) {
+  window.jdTogglePkg = function (id) {
     var arrow = document.getElementById('jd-arr-' + id);
     if (!arrow) return;
     var opening = arrow.textContent.trim() === '▶';
@@ -83,30 +70,32 @@ _DASHBOARD_POLL_JS = r"""
   };
 
   function refresh() {
-    var open = openKeys();
-    var tab = activeTab();
     var pkgs = openPkgIds();
-    fetch('/dashboard', {cache: 'no-store'})
+    fetch('/', {cache: 'no-store'})
       .then(function (r) { return r.text(); })
       .then(function (text) {
         var tmp = document.createElement('div');
         tmp.innerHTML = text;
-        var newCard = tmp.querySelector('#pipeline');
-        var oldCard = document.getElementById('pipeline');
-        if (newCard && oldCard) {
-          oldCard.replaceWith(newCard);
-          window.jdSwitchTab(tab);
-          restoreOpen(open);
-          restorePkgIds(pkgs);
-        }
+        // Only update pipeline panes — never touch Sources/Settings (would reset forms)
+        ['jd-linkgrabber', 'jd-downloads', 'jd-sb-linkgrabber', 'jd-sb-downloads'].forEach(function (id) {
+          var n = tmp.querySelector('#' + id);
+          var o = document.getElementById(id);
+          if (n && o) o.innerHTML = n.innerHTML;
+        });
+        // Update LG + Downloads badges
+        PIPELINE_TABS.forEach(function (t) {
+          var nb = tmp.querySelector('.jd-tab[data-tab="' + t + '"] .jd-badge');
+          var ob = document.querySelector('.jd-tab[data-tab="' + t + '"] .jd-badge');
+          if (nb && ob) ob.textContent = nb.textContent;
+        });
+        restorePkgIds(pkgs);
       })
       .catch(function () {});
   }
 
+  window.refresh = refresh;
   setInterval(refresh, INTERVAL);
-  refresh(); // scan immediately on page load
 
-  // Intercept task-action and manual-grab form submits via fetch
   document.addEventListener('submit', function (e) {
     if (!e.target.classList.contains('task-actions')) return;
     e.preventDefault();
@@ -115,87 +104,48 @@ _DASHBOARD_POLL_JS = r"""
       .finally(function () { refresh(); });
   });
 
-  // Bulk toolbar actions (Start All / Pause All / Clear Done)
-  window.jdBulkAction = function(action) {
+  window.jdBulkAction = function (action) {
     fetch('/tasks/bulk', {
       method: 'POST',
       headers: {'Content-Type': 'application/x-www-form-urlencoded'},
       body: 'action=' + encodeURIComponent(action)
-    }).catch(function(){}).finally(function() { refresh(); });
+    }).catch(function () {}).finally(function () { refresh(); });
   };
+
+  // Activate tab from URL on load
+  var initTab = (new URLSearchParams(window.location.search)).get('tab') || 'downloads';
+  window.jdSwitchTab(initTab);
 })();
 """
 
-_NAV = [
-    ("dashboard", "Dashboard"),
-    ("sources", "Sources"),
-    ("settings", "Settings"),
-]
 
-SECTION_ALIASES = {
-    "download-tasks": "dashboard",
-    "jobs": "dashboard",
-    "media-managers": "settings",
-    "radarr": "settings",
-    "sonarr": "settings",
-    "worker": "settings",
-    "tasks": "settings",
-    "indexer": "settings",
-    "downloader": "settings",
-    "jellyfin": "settings",
-}
-ALL_SECTIONS = {s for s, _ in _NAV} | set(SECTION_ALIASES)
-
-
-def render_page(settings: Settings, message: str, section: str, settings_tab: str = "") -> str:
-    requested_section = section
-    section = SECTION_ALIASES.get(section, section)
-    if section == "settings" and not settings_tab:
-        settings_tab = {
-            "media-managers": "radarr",
-            "radarr": "radarr",
-            "sonarr": "sonarr",
-            "worker": "worker",
-            "tasks": "tasks",
-            "indexer": "indexer",
-            "downloader": "downloader",
-            "jellyfin": "jellyfin",
-        }.get(requested_section, "")
+def render_page(settings: Settings, message: str, tab: str = "downloads", stab: str = "") -> str:
     config = settings.to_config_dict()
     templates = json.dumps(config["hls_template_sources"], indent=2)
     source_order = ",".join(config["source_order"])
     ffmpeg_args = ",".join(config["ffmpeg_extra_args"])
-    msg_html = f'<div class="notice">{html.escape(message)}</div>' if message else ""
-    section_title = {
-        "dashboard": "Dashboard",
-        "sources": "Sources",
-        "settings": "Settings",
-    }.get(section, "Dashboard")
 
-    card_html, has_form = _section_card(section, settings, config, templates, source_order, ffmpeg_args, settings_tab)
+    lg_html, lg_pkgs, lg_links, lg_errors = _indexer_card(settings)
+    dl_html, dl_pkgs, dl_running, dl_errors = _download_card(settings)
+    src_html = sources_card(config, templates, source_order)
+    stg_html = settings_card(config, ffmpeg_args, stab)
 
-    if has_form:
-        test_button = ""
-        if section in {"radarr", "sonarr"}:
-            label = "Test Radarr" if section == "radarr" else "Test Sonarr"
-            test_button = f'\n      <button type="submit" formaction="/test" class="btn btn-ghost">{label}</button>'
-        actions = """
-    <div class="actions">
-      <button type="submit" class="btn btn-primary">&#10003; Save Changes</button>""" + test_button + """
-    </div>"""
-        content = f"""
-  <form method="post" action="/save">
-    <input type="hidden" name="_section" value="{html.escape(section)}">
-    {card_html}
-    {actions}
-  </form>"""
-    else:
-        content = card_html
+    msg_html = f'<div class="notice" style="margin-bottom:16px">{html.escape(message)}</div>' if message else ""
 
-    nav_items = "\n".join(
-        f'    <a href="/{s}" class="nav-item{"  active" if s == section else ""}">{label}</a>'
-        for s, label in _NAV
+    lg_statusbar = (
+        f"<span class='jd-stat'>Package(s): <span class='jd-stat-val'>{lg_pkgs}</span></span>"
+        f"<span class='jd-stat'>Link(s): <span class='jd-stat-val'>{lg_links}</span></span>"
+        f"<span class='jd-stat'>Online: <span class='jd-stat-val' style='color:var(--green)'>{lg_pkgs - lg_errors}</span></span>"
+        f"<span class='jd-stat'>Offline: <span class='jd-stat-val' style='color:#e06c75'>{lg_errors}</span></span>"
     )
+    dl_statusbar = (
+        f"<span class='jd-stat'>Package(s): <span class='jd-stat-val'>{dl_pkgs}</span></span>"
+        f"<span class='jd-stat'>Running: <span class='jd-stat-val' style='color:var(--green)'>{dl_running}</span></span>"
+        f"<span class='jd-stat'>Errors: <span class='jd-stat-val' style='color:#e06c75'>{dl_errors}</span></span>"
+    )
+
+    VALID_TABS = {"linkgrabber", "downloads", "sources", "settings"}
+    active = tab if tab in VALID_TABS else "downloads"
 
     return f"""<!doctype html>
 <html lang="en">
@@ -206,53 +156,50 @@ def render_page(settings: Settings, message: str, section: str, settings_tab: st
   <style>{CSS}</style>
 </head>
 <body>
+<div class="jd-wrap">
 
-<nav class="sidebar">
-  <a class="sidebar-brand" href="/dashboard">
+  <div class="jd-brand">
     <div class="brand-icon">D</div>
-    <div>
-      <div class="brand-name">Deceptarr</div>
-      <div class="brand-sub">Media Source Gateway</div>
-    </div>
-  </a>
-  <div class="nav-group">
-{nav_items}
+    <span class="brand-name">Deceptarr</span>
+    <span class="brand-sub">{html.escape(settings.config_path)}</span>
   </div>
-</nav>
 
-<div class="topbar">
-  <span class="topbar-title">{section_title} <span class="topbar-sub">{_attr(settings.config_path)}</span></span>
+  <div class="jd-toolbar" id="jd-main-toolbar">
+    <button class="jd-tb-btn" onclick='jdBulkAction("resume_all")'>&#9654; Start All</button>
+    <button class="jd-tb-btn" onclick='jdBulkAction("pause_all")'>&#9646;&#9646; Pause All</button>
+    <div class="jd-tb-sep"></div>
+    <button class="jd-tb-btn" onclick='jdBulkAction("clear_done")'>&#10005; Clear Done</button>
+    <div class="jd-tb-sep"></div>
+    <button class="jd-tb-btn" onclick='window.refresh()' style="margin-left:auto">&#8635; Refresh</button>
+  </div>
+
+  <div class="jd-tabbar">
+    <div class="jd-tab" data-tab="linkgrabber" onclick='jdSwitchTab("linkgrabber")'>&#128279; LinkGrabber <span class="jd-badge">{lg_pkgs}</span></div>
+    <div class="jd-tab" data-tab="downloads" onclick='jdSwitchTab("downloads")'>&#11015; Downloads <span class="jd-badge">{dl_pkgs}</span></div>
+    <div class="jd-tab" data-tab="sources" onclick='jdSwitchTab("sources")'>&#9733; Sources</div>
+    <div class="jd-tab" data-tab="settings" onclick='jdSwitchTab("settings")'>&#9881; Settings</div>
+  </div>
+
+  <div id="jd-linkgrabber" class="jd-pane">{lg_html}</div>
+  <div id="jd-downloads" class="jd-pane">{dl_html}</div>
+  <div id="jd-sources" class="jd-pane" style="overflow-y:auto">
+    <div style="padding:24px 28px 48px;max-width:980px;margin:0 auto">
+      {''.join([msg_html, src_html]) if active == 'sources' else src_html}
+    </div>
+  </div>
+  <div id="jd-settings" class="jd-pane" style="overflow-y:auto">
+    <div style="padding:24px 28px 48px;max-width:980px;margin:0 auto">
+      {''.join([msg_html, stg_html]) if active == 'settings' else stg_html}
+    </div>
+  </div>
+
+  <div id="jd-sb-linkgrabber" class="jd-statusbar"><div class="jd-sb-row">{lg_statusbar}</div></div>
+  <div id="jd-sb-downloads" class="jd-statusbar"><div class="jd-sb-row">{dl_statusbar}</div></div>
+
 </div>
-
-<main class="main{' dashboard' if section == 'dashboard' else ' constrained'}">
-  {msg_html}
-
-  {content}
-
-</main>
-
-{'<script>' + _DASHBOARD_POLL_JS + '</script>' if section == "dashboard" else ""}
-{"<script>document.addEventListener('DOMContentLoaded',function(){var a=document.activeElement;if(a&&(a.tagName==='INPUT'||a.tagName==='TEXTAREA'||a.tagName==='SELECT'))a.blur();});</script>" if section == "settings" else ""}
+<script>{_APP_JS}</script>
 </body>
 </html>"""
-
-
-def _section_card(
-    section: str,
-    settings: Settings,
-    config: dict,
-    templates: str,
-    source_order: str,
-    ffmpeg_args: str,
-    settings_tab: str,
-) -> tuple[str, bool]:
-    if section == "dashboard":
-        return _pipeline_card(settings), False
-    if section == "sources":
-        return sources_card(config, templates, source_order), False  # manages its own form
-    if section == "settings":
-        return settings_card(config, ffmpeg_args, settings_tab), False
-    return _pipeline_card(settings), False
 
 
 def _detail_panel(steps: list[tuple[str, str, str, str]], open_by_default: bool = True) -> str:

@@ -566,7 +566,7 @@ def settings_card(config: dict[str, Any], ffmpeg_args: str, active_tab: str) -> 
     valid_tabs = {key for key, _ in tabs}
     active_tab = active_tab if active_tab in valid_tabs else "radarr"
     tab_html = "\n      ".join(
-        f'<a href="/settings?tab={_attr(key)}" class="settings-tab{" active" if key == active_tab else ""}">{html.escape(label)}</a>'
+        f'<a href="/?tab=settings&stab={_attr(key)}" class="settings-tab{" active" if key == active_tab else ""}">{html.escape(label)}</a>'
         for key, label in tabs
     )
 

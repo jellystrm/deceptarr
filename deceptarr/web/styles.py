@@ -217,14 +217,19 @@ details[open] .pipe-detail summary::before { transform: rotate(90deg); }
 .sdot.ok  { background: var(--green); }
 .sdot.err { background: #e06c75; }
 .sdot.pending { background: var(--accent); }
-/* JDownloader-style dashboard */
-.main.dashboard { padding: 10px 14px 14px; }
+/* JDownloader-style full-page app */
 .jd-wrap {
   display: flex; flex-direction: column;
-  height: calc(100vh - var(--topbar-h) - 36px);
-  border: 1px solid var(--border); border-radius: 8px;
-  overflow: hidden; background: var(--card-bg);
+  height: 100vh;
+  overflow: hidden; background: var(--bg);
 }
+.jd-brand {
+  display: flex; align-items: center; gap: 10px;
+  padding: 0 14px; height: 42px; flex-shrink: 0;
+  background: var(--sidebar-bg); border-bottom: 1px solid var(--border);
+}
+.jd-brand .brand-name { font-size: 14px; font-weight: 700; color: var(--text); }
+.jd-brand .brand-sub  { font-size: 11px; color: var(--muted); margin-left: 2px; }
 .jd-toolbar {
   display: flex; align-items: center; gap: 2px;
   padding: 5px 8px; background: var(--sidebar-bg);
@@ -300,9 +305,6 @@ details[open] .pipe-detail summary::before { transform: rotate(90deg); }
 .jd-child-r:hover td { background: rgba(0,0,0,0.25); }
 /* Responsive */
 @media (max-width: 768px) {
-  .sidebar { display: none; }
-  .topbar, .main { margin-left: 0; }
   .row, .row.cols-3 { grid-template-columns: 1fr; }
-  .jd-wrap { height: calc(100vh - var(--topbar-h) - 24px); border-radius: 0; border-left: none; border-right: none; }
 }
 """
