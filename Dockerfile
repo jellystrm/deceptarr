@@ -17,8 +17,8 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY backend ./backend
+COPY deceptarr ./deceptarr
 COPY --from=frontend-build /app/dist ./dist
 
 ENV PYTHONUNBUFFERED=1
-CMD ["python", "-m", "backend"]
+CMD ["python", "-m", "deceptarr"]
