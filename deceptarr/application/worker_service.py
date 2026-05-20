@@ -264,8 +264,20 @@ def main() -> None:
         worker.run_once()
         return
     if settings.ui_enabled:
-        from deceptarr.web import UiServer
+        import threading
+        import uvicorn
+        from deceptarr.api import create_app
 
-        UiServer(settings.ui_host, settings.ui_port).start_background()
+        _ui_app = create_app()
+        _ui_config = uvicorn.Config(
+            _ui_app,
+            host=settings.ui_host,
+            port=settings.ui_port,
+            log_level="warning",
+            loop="asyncio",
+        )
+        _ui_server = uvicorn.Server(_ui_config)
+        threading.Thread(target=_ui_server.run, name="deceptarr-ui", daemon=True).start()
+        log.info("UI listening on http://%s:%s (FastAPI/uvicorn)", settings.ui_host, settings.ui_port)
     _resume_interrupted_jobs(settings)
     worker.run_forever()
