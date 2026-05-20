@@ -414,7 +414,7 @@ class PhimApiSource(Source):
         #    One Piece where PhimAPI stores "Tập 13" but Sonarr sends S2000E05)
         _tvmaze_info = None
         _expected_abs: int | None = None   # TVDB S{season}E{episode} → absolute
-        if tvdb_id is not None:
+        if tvdb_id:
             try:
                 _tvmaze_info = TVMazeClient().get_series_info(tvdb_id)
                 if _tvmaze_info and _tvmaze_info.seasons:
@@ -439,7 +439,7 @@ class PhimApiSource(Source):
                 rs = current_s
 
                 if not rs:
-                    es_m = re.search(r"(ph[aầ]n|season|ss|p|s)\s*(\d+)", ename, re.IGNORECASE)
+                    es_m = re.search(r"\b(ph[aầ]n|season|ss|p|s)\s*(\d+)", ename, re.IGNORECASE)
                     if es_m:
                         rs = int(es_m.group(2))
 
@@ -481,6 +481,8 @@ class PhimApiSource(Source):
                             if s_info_t and num > s_info_t.episode_count:
                                 rs = mapped_s
 
+                if rs is None and season > 1:
+                    continue
                 if rs is not None and rs != season:
                     continue
 
