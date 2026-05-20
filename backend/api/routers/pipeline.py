@@ -12,6 +12,8 @@ from backend.infrastructure.activity import ActivityLog
 from backend.infrastructure.config import Settings, save_settings, _generate_torznab_key
 from backend.infrastructure.jobs import JobStore
 from backend.api.forms import form_to_config
+from backend.application.grab_service import encode_release
+from backend.interfaces.indexers.torznab import build_releases, _release_display_title
 
 log = logging.getLogger(__name__)
 router = APIRouter()
@@ -28,7 +30,7 @@ async def health_check() -> JSONResponse:
         "sonarr":  settings.sonarr_url  or "",
         "jellyfin":settings.jellyfin_url or "",
         "kkphim":  "https://phimapi.com",
-        "ophim":   "https://ophim1.com",
+        "ophim":   "https://ophim1.com/v1/api/home",
         "nguonc":  "https://phim.nguonc.com",
     }
 
@@ -109,6 +111,53 @@ def activity() -> JSONResponse:
     return JSONResponse([dataclasses.asdict(e) for e in events])
 
 
+@router.post("/api/test-grabber")
+async def test_grabber(request: Request) -> JSONResponse:
+    """Create a fake LinkGrabber search event from test input."""
+    data = await request.json()
+    settings = Settings.load()
+
+    media_type = str(data.get("media_type", "movie"))
+    title = str(data.get("title") or "").strip()
+    tmdb_id = _int_or_none(data.get("tmdb_id"))
+    year = _int_or_none(data.get("year"))
+    season = _int_or_none(data.get("season"))
+    episode = _int_or_none(data.get("episode"))
+
+    query: dict[str, list[str]] = {
+        "t": ["tvsearch" if media_type == "tv" else "movie"],
+        "q": [title],
+    }
+    if tmdb_id is not None:
+        query["tmdbid"] = [str(tmdb_id)]
+    if year is not None:
+        query["year"] = [str(year)]
+    if media_type == "tv":
+        query["season"] = [str(season or 1)]
+        query["ep"] = [str(episode or 1)]
+
+    releases = build_releases(settings, query)
+    result_titles = [_release_display_title(r) for r in releases]
+    result_grabs = [
+        {"title": _release_display_title(r), "token": encode_release(r)}
+        for r in releases
+    ]
+    display_title = title or (f"TMDB {tmdb_id}" if tmdb_id else "Test query")
+    kind = "TV" if media_type == "tv" else "Movie"
+    query_url = f"{settings.public_base_url}/torznab/api?test=linkgrabber"
+
+    ActivityLog.get().add(
+        kind="search",
+        title=f"{kind}: {display_title}",
+        detail=f"{len(releases)} fake result(s) - sources: {', '.join(settings.source_order) or 'none'}",
+        status="ok" if releases else "error",
+        results=result_titles,
+        url=query_url,
+        grabs=result_grabs,
+    )
+    return JSONResponse({"status": "ok", "count": len(releases), "results": result_titles})
+
+
 @router.post("/api/settings")
 async def settings_save(request: Request) -> JSONResponse:
     """Save a settings section from a JSON payload.
@@ -134,3 +183,12 @@ async def settings_save(request: Request) -> JSONResponse:
     except Exception as exc:
         log.exception("settings_save failed")
         return JSONResponse({"status": "error", "message": str(exc)}, status_code=400)
+
+
+def _int_or_none(value: object) -> int | None:
+    try:
+        if value in (None, ""):
+            return None
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return None
