@@ -335,12 +335,14 @@ class Settings:
         if not raw_public:
             raw_public = _detect_public_base_url(radarr_url, sonarr_url, jellyfin_url, ui_port)
 
-        # ── TORZNAB_API_KEY: env → file → auto-generate ────────────────────────
+        # ── TORZNAB_API_KEY: env → file → auto-generate (persist if generated) ───
+        _needs_persist = False
         raw_torznab_key = os.getenv("TORZNAB_API_KEY", "").strip()
         if not raw_torznab_key:
             raw_torznab_key = str(_file_value(file_data, "torznab_api_key", "")).strip()
         if not raw_torznab_key:
             raw_torznab_key = _generate_torznab_key()
+            _needs_persist = True  # new key — save so it survives restarts
 
         # ── QB credentials: env (default admin/adminadmin) → file ─────────────
         qb_username = os.getenv("QB_USERNAME", "").strip()
@@ -372,23 +374,33 @@ class Settings:
             source_order = ["kkphim", "ophim", "nguonc"]
 
         # ── Storage paths: config file → auto-detect from Arr → fallback ──────
+        # Only detected (non-fallback) values are persisted; fallbacks are not
+        # written so the next start retries detection when Arr becomes available.
         movie_strm_root = str(_file_value(file_data, "movie_strm_root", "")).strip()
         if not movie_strm_root:
-            movie_strm_root = _detect_arr_root_folder(radarr_url, radarr_api_key) or "/movies"
+            _detected = _detect_arr_root_folder(radarr_url, radarr_api_key)
+            movie_strm_root = _detected or "/movies"
+            if _detected:
+                _needs_persist = True
 
         series_strm_root = str(_file_value(file_data, "series_strm_root", "")).strip()
         if not series_strm_root:
-            series_strm_root = _detect_arr_root_folder(sonarr_url, sonarr_api_key) or "/series"
+            _detected = _detect_arr_root_folder(sonarr_url, sonarr_api_key)
+            series_strm_root = _detected or "/series"
+            if _detected:
+                _needs_persist = True
 
         download_root = str(_file_value(file_data, "download_root", "")).strip()
         if not download_root:
-            download_root = (
+            _detected = (
                 _detect_download_root(radarr_url, radarr_api_key)
                 or _detect_download_root(sonarr_url, sonarr_api_key)
-                or "/downloads"
             )
+            download_root = _detected or "/downloads"
+            if _detected:
+                _needs_persist = True
 
-        return Settings(
+        settings = Settings(
             radarr_url=radarr_url,
             radarr_api_key=radarr_api_key,
             sonarr_url=sonarr_url,
@@ -429,6 +441,16 @@ class Settings:
             hls_template_sources=hls_template_sources,  # type: ignore[arg-type]
             source_order=source_order,
         )
+
+        # Persist any auto-detected / auto-generated values so the next start
+        # reads them from file and skips the detection probes entirely.
+        if _needs_persist:
+            try:
+                save_settings(settings.to_config_dict(), config_path)
+            except Exception:
+                pass  # non-fatal; detection will retry next restart
+
+        return settings
 
     def to_config_dict(self) -> dict[str, Any]:
         return {
