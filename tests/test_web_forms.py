@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import pytest
-from deceptarr.infrastructure.config import Settings
-from deceptarr.web.forms import form_to_config, parse_multipart
+from backend.infrastructure.config import Settings
+from backend.web.forms import form_to_config, parse_multipart
 
 
 # ── parse_multipart ───────────────────────────────────────────────────────────

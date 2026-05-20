@@ -6,33 +6,20 @@ services:
     container_name: deceptarr
     network_mode: host
     environment:
+      # Optional: Only set if you want to override auto-detected values
       - PUID=${PUID}
       - PGID=${PGID}
       - TZ=${TZ}
-      - PUBLIC_BASE_URL=${PUBLIC_BASE_URL}
-      - TORZNAB_API_KEY=${TORZNAB_API_KEY}
       - TMDB_API_KEY=${TMDB_API_KEY}
-      - SERVER_LABELS=${SERVER_LABELS}
-      - QB_USERNAME=${QB_USERNAME}
-      - QB_PASSWORD=${QB_PASSWORD}
-      - DEFAULT_OUTPUT_MODE=${DEFAULT_OUTPUT_MODE}
-      - EXPOSE_BOTH_MODES=${EXPOSE_BOTH_MODES}
-      - DOWNLOAD_ROOT=${DOWNLOAD_ROOT}
-      - MOVIE_STRM_ROOT=${MOVIE_STRM_ROOT}
-      - SERIES_STRM_ROOT=${SERIES_STRM_ROOT}
-      - DOWNLOAD_CONTAINER=${DOWNLOAD_CONTAINER}
-      - POLL_INTERVAL_SECONDS=${POLL_INTERVAL_SECONDS}
-      - LOG_LEVEL=${LOG_LEVEL}
-      - UI_PORT=${UI_PORT}
     volumes:
-      # Thư mục cấu hình
+      # Config directory - all settings stored here
       - /appdata/deceptarr:/config
-
-      # Thư mục tải về (Phải giống hệt Radarr/Sonarr)
+      
+      # Download folder - must match Radarr/Sonarr download path
       - /srv/mergerfs/MainPool/downloads:/downloads
-
-      # Thư mục phim và series (Phải giống hệt Jellyfin)
+      
+      # Movie/Series library paths - must match Jellyfin library paths
       - /srv/mergerfs/MainPool/Phim:/movies
       - "/srv/mergerfs/MainPool/Phim/TV Shows:/series"
-
+      
     restart: unless-stopped

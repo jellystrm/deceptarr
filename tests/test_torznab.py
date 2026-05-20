@@ -4,8 +4,8 @@ from __future__ import annotations
 import xml.etree.ElementTree as ET
 
 import pytest
-from deceptarr.infrastructure.config import Settings
-from deceptarr.interfaces.indexers.torznab import build_releases, caps_response, search_response
+from backend.infrastructure.config import Settings
+from backend.interfaces.indexers.torznab import build_releases, caps_response, search_response
 
 
 @pytest.fixture

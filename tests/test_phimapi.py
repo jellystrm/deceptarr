@@ -4,9 +4,9 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 import pytest
-from deceptarr.domain.models import EpisodeWanted, MovieWanted
-from deceptarr.sources.phimapi import PhimApiSource
-from deceptarr.adapters.tmdb import TmdbSeriesInfo, TmdbSeason
+from backend.domain.models import EpisodeWanted, MovieWanted
+from backend.sources.phimapi import PhimApiSource
+from backend.adapters.tmdb import TmdbSeriesInfo, TmdbSeason
 
 
 # ── Fixtures ──────────────────────────────────────────────────────────────────

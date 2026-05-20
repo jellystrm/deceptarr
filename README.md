@@ -178,29 +178,33 @@ Start the UI locally:
 
 ## Environment
 
+Most settings are auto-detected and do not require configuration:
+
 | Variable | Default | Notes |
 |---|---:|---|
-| `CONFIG_PATH` | `/config/config.json` | UI-managed config file |
-| `UI_ENABLED` | `true` | Enables the built-in config UI |
-| `UI_HOST` | `0.0.0.0` | UI listen host |
 | `UI_PORT` | `8765` | UI listen port |
-| `PUBLIC_BASE_URL` | `http://127.0.0.1:8765` | Base URL embedded in Torznab release links |
-| `TORZNAB_API_KEY` | `deceptarr` | Indexer API key |
-| `QB_USERNAME` | `admin` | qBittorrent-compatible username |
-| `QB_PASSWORD` | `adminadmin` | qBittorrent-compatible password |
-| `DEFAULT_OUTPUT_MODE` | `strm` | `strm` or `download` |
-| `EXPOSE_BOTH_MODES` | `true` | Return both `[STRM]` and `[HLS-DL]` releases |
-| `MOVIE_STRM_ROOT` | `/movies` | Movie STRM library path |
-| `SERIES_STRM_ROOT` | `/shows` | Series STRM library path |
-| `DOWNLOAD_ROOT` | `/downloads/vn` | HLS download staging path |
-| `DOWNLOAD_CONTAINER` | `mkv` | `mkv` or `mp4` |
 | `TMDB_API_KEY` | empty | Required for TV resolution via Torznab (TVDB → TMDB lookup). Get free at themoviedb.org |
-| `SOURCE_ORDER` | `kkphim,ophim` | Comma-separated source names; built-ins are `kkphim` and `ophim` |
-| `HLS_TEMPLATE_SOURCES_JSON` | empty | Adds custom HLS resolver endpoints you control |
-| `JELLYFIN_URL` | empty | Optional Jellyfin URL |
-| `JELLYFIN_API_KEY` | empty | Optional Jellyfin API key |
-| `JELLYFIN_SCAN_AFTER_STRM` | `false` | Call Jellyfin scan after STRM creation |
-| `FFMPEG_PATH` | `ffmpeg` | ffmpeg binary |
-| `FFMPEG_EXTRA_ARGS` | empty | Comma-separated ffmpeg args |
-| `STATE_PATH` | `/state/state.json` | Job and polling state |
 | `LOG_LEVEL` | `INFO` | Python logging level |
+
+### Auto-detected values (no config needed)
+
+- **Jellyfin/Radarr/Sonarr URLs**: Auto-probed from `http://jellyfin:8096`, `http://radarr:7878`, `http://sonarr:8989`, `localhost`, and `127.0.0.1`
+- **TORZNAB_API_KEY**: Auto-generated persistent random key (stored in config file)
+- **DOWNLOAD_ROOT**: Uses `/downloads` by default; in Docker, follows the mounted download folder
+- **CONFIG_PATH**: Fixed at `/config/config.json`
+- **STATE_PATH**: Fixed at `/config/state.json`
+- **FFMPEG_PATH**: Auto-detected (`ffmpeg` on PATH, `/usr/bin/ffmpeg`, or `/usr/local/bin/ffmpeg`). Raises error if not found.
+- **FFMPEG_EXTRA_ARGS**: Uses sensible defaults (`-loglevel warning -stats`), adjustable via UI
+
+### UI-configurable settings
+
+The following can be configured via the web UI (saved to `/config/config.json`):
+
+- Radarr/Sonarr API keys
+- Jellyfin URL and API key
+- Download paths (movies, series, downloads)
+- Output mode (strm vs download)
+- Torznab API key (with regenerate button)
+- FFMPEG extra arguments
+- Worker settings (poll interval, etc.)
+- Source templates

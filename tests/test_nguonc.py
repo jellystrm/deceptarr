@@ -2,9 +2,9 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from deceptarr.domain.models import EpisodeWanted, MovieWanted
-from deceptarr.sources import build_sources
-from deceptarr.sources.nguonc import NguonCSource
+from backend.domain.models import EpisodeWanted, MovieWanted
+from backend.sources import build_sources
+from backend.sources.nguonc import NguonCSource
 
 
 def _source() -> NguonCSource:

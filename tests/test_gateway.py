@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import pytest
-from deceptarr.application.grab_service import decode_release, decode_release_from_url, encode_release
-from deceptarr.domain.models import GatewayRelease
+from backend.application.grab_service import decode_release, decode_release_from_url, encode_release
+from backend.domain.models import GatewayRelease
 
 
 def _make_release(**kwargs) -> GatewayRelease:

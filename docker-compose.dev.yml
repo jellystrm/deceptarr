@@ -1,0 +1,46 @@
+# Development — hot-reload backend + Vue dev server in one container.
+# Usage: docker compose -f docker-compose.dev.yml up
+# Backend: http://localhost:8765
+# Vue  HMR : http://localhost:5173
+services:
+  deceptarr:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: deceptarr-dev
+    restart: unless-stopped
+    working_dir: /app
+    # pip + npm install on first run, then start both services
+    command: >
+      sh -c "
+        npm install --prefix frontend --silent 2>/dev/null || true
+        pip install --no-cache-dir -r requirements.txt 2>/dev/null || pip install -r requirements.txt
+        echo '=== starting deceptarr ==='
+        (cd frontend && npx vite --host 0.0.0.0 --port 5173) &
+        python -m backend
+      "
+    volumes:
+      - ./backend:/app/backend          # Python hot-reload
+      - ./frontend:/app/frontend              # Vue HMR
+      - ./.local:/app/.local                  # state, downloads, movies, shows
+      - ./config:/app/config
+    ports:
+      - "8765:8765"   # Backend API + fallback UI
+      - "5173:5173"   # Vite dev server
+    environment:
+      # Only TMDB_API_KEY is required (get free at themoviedb.org)
+      - TMDB_API_KEY=${TMDB_API_KEY:-}
+      
+      # Optional overrides (defaults are sensible):
+      # - SERVER_LABELS=ViệtSub,Lồng Tiếng
+      # - DEFAULT_OUTPUT_MODE=strm
+      # - EXPOSE_BOTH_MODES=true
+      # - POLL_INTERVAL_SECONDS=300
+      # - LOG_LEVEL=INFO
+    shm_size: "256m"
+    networks:
+      - media
+
+networks:
+  media:
+    external: true

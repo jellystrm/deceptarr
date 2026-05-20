@@ -17,8 +17,8 @@ from unittest.mock import patch
 
 import pytest
 
-from deceptarr.sources import build_sources
-from deceptarr.domain.models import EpisodeWanted, MovieWanted
+from backend.sources import build_sources
+from backend.domain.models import EpisodeWanted, MovieWanted
 
 _LIVE = os.getenv("LIVE_SOURCES") == "1"
 pytestmark = pytest.mark.skipif(not _LIVE, reason="set LIVE_SOURCES=1 to run live tests")

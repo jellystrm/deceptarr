@@ -18,10 +18,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from deceptarr.adapters.tmdb import TmdbSeason, TmdbSeriesInfo
-from deceptarr.adapters.tvmaze import TVMazeSeason, TVMazeSeriesInfo
-from deceptarr.domain.models import EpisodeWanted, MovieWanted
-from deceptarr.sources.phimapi import PhimApiSource
+from backend.adapters.tmdb import TmdbSeason, TmdbSeriesInfo
+from backend.adapters.tvmaze import TVMazeSeason, TVMazeSeriesInfo
+from backend.domain.models import EpisodeWanted, MovieWanted
+from backend.sources.phimapi import PhimApiSource
 
 
 # ── Generic helpers ────────────────────────────────────────────────────────────
@@ -427,7 +427,7 @@ class TestAnimeAbsoluteNumbering:
         tvmaze = self._one_piece_tvmaze()
         with patch.object(src.session, "get") as mock:
             with patch.object(src.tmdb, "get_series_info", return_value=self._one_piece_tmdb()):
-                with patch("deceptarr.sources.phimapi.TVMazeClient") as MockTV:
+                with patch("backend.sources.phimapi.TVMazeClient") as MockTV:
                     MockTV.return_value.get_series_info.return_value = tvmaze
                     mock.side_effect = [_search(items), detail]
                     hit = src.resolve_episode(_wanted_ep("One Piece", 37854, 81797, season=1, ep=1, year=1999))
@@ -443,7 +443,7 @@ class TestAnimeAbsoluteNumbering:
         tvmaze = self._one_piece_tvmaze()
         with patch.object(src.session, "get") as mock:
             with patch.object(src.tmdb, "get_series_info", return_value=self._one_piece_tmdb()):
-                with patch("deceptarr.sources.phimapi.TVMazeClient") as MockTV:
+                with patch("backend.sources.phimapi.TVMazeClient") as MockTV:
                     MockTV.return_value.get_series_info.return_value = tvmaze
                     mock.side_effect = [_search(items), detail]
                     hit = src.resolve_episode(_wanted_ep("One Piece", 37854, 81797, season=2, ep=5, year=1999))
@@ -460,7 +460,7 @@ class TestAnimeAbsoluteNumbering:
         tvmaze = self._one_piece_tvmaze()
         with patch.object(src.session, "get") as mock:
             with patch.object(src.tmdb, "get_series_info", return_value=self._one_piece_tmdb()):
-                with patch("deceptarr.sources.phimapi.TVMazeClient") as MockTV:
+                with patch("backend.sources.phimapi.TVMazeClient") as MockTV:
                     MockTV.return_value.get_series_info.return_value = tvmaze
                     mock.side_effect = [_search(items), detail]
                     hit = src.resolve_episode(_wanted_ep("One Piece", 37854, 81797, season=21, ep=1, year=1999))
@@ -480,7 +480,7 @@ class TestAnimeAbsoluteNumbering:
         detail = _detail("naruto", "Naruto", "series", 2002, "46260", eps)
         with patch.object(src.session, "get") as mock:
             with patch.object(src.tmdb, "get_series_info", return_value=tmdb_info):
-                with patch("deceptarr.sources.phimapi.TVMazeClient") as MockTV:
+                with patch("backend.sources.phimapi.TVMazeClient") as MockTV:
                     MockTV.return_value.get_series_info.return_value = tvmaze
                     mock.side_effect = [_search(items), detail]
                     hit = src.resolve_episode(_wanted_ep("Naruto", 46260, 78857, season=1, ep=53, year=2002))
@@ -496,7 +496,7 @@ class TestAnimeAbsoluteNumbering:
         detail = _detail("witcher-s1", "The Witcher", "series", 2019, "71912", eps)
         with patch.object(src.session, "get") as mock:
             with patch.object(src.tmdb, "get_series_info", return_value=tmdb_info):
-                with patch("deceptarr.sources.phimapi.TVMazeClient") as MockTV:
+                with patch("backend.sources.phimapi.TVMazeClient") as MockTV:
                     MockTV.return_value.get_series_info.return_value = None
                     mock.side_effect = [_search(items), detail]
                     hit = src.resolve_episode(_wanted_ep("The Witcher", 71912, 0, season=1, ep=5, year=2019))

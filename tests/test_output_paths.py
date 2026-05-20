@@ -6,10 +6,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from deceptarr.application.grab_service import _enrich_with_tmdb, _is_placeholder_title
-from deceptarr.application.output_service import OutputService
-from deceptarr.domain.models import GatewayJob, GatewayRelease
-from deceptarr.infrastructure.config import Settings
+from backend.application.grab_service import _enrich_with_tmdb, _is_placeholder_title
+from backend.application.output_service import OutputService
+from backend.domain.models import GatewayJob, GatewayRelease
+from backend.infrastructure.config import Settings
 
 
 # ── Placeholder title detection ───────────────────────────────────────────────
@@ -41,7 +41,7 @@ class TestEnrichWithTmdb:
             title="TMDB 24428", kind="movie", output_mode="strm",
             source_name="kkphim", query="TMDB 24428", tmdb_id=24428,
         )
-        with patch("deceptarr.application.grab_service.TmdbClient") as MockTmdb:
+        with patch("backend.application.grab_service.TmdbClient") as MockTmdb:
             client = MagicMock()
             client.enabled = True
             client.get_movie_title.return_value = ("The Avengers", 2012)
@@ -54,14 +54,14 @@ class TestEnrichWithTmdb:
         assert enriched.tmdb_id == 24428  # unchanged
 
     def test_enriches_series_title_from_tmdb(self):
-        from deceptarr.adapters.tmdb import TmdbSeriesInfo
+        from backend.adapters.tmdb import TmdbSeriesInfo
         release = GatewayRelease(
             title="TVDB 81189", kind="episode", output_mode="strm",
             source_name="kkphim", query="", tmdb_id=1396,
             season_number=1, episode_number=1,
         )
         series_info = TmdbSeriesInfo(title="Breaking Bad", series_year=2008)
-        with patch("deceptarr.application.grab_service.TmdbClient") as MockTmdb:
+        with patch("backend.application.grab_service.TmdbClient") as MockTmdb:
             client = MagicMock()
             client.enabled = True
             client.get_series_info.return_value = series_info
@@ -77,7 +77,7 @@ class TestEnrichWithTmdb:
             title="Avengers: Endgame", kind="movie", output_mode="strm",
             source_name="kkphim", query="Avengers Endgame", tmdb_id=299534,
         )
-        with patch("deceptarr.application.grab_service.TmdbClient") as MockTmdb:
+        with patch("backend.application.grab_service.TmdbClient") as MockTmdb:
             client = MagicMock()
             client.enabled = True
             MockTmdb.return_value = client

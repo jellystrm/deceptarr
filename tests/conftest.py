@@ -8,7 +8,7 @@ import pytest
 os.environ.setdefault("CONFIG_PATH", "/tmp/vn_test_config.yml")
 
 
-from deceptarr.adapters.tmdb import TmdbSeriesInfo, TmdbSeason
+from backend.adapters.tmdb import TmdbSeriesInfo, TmdbSeason
 
 
 @pytest.fixture

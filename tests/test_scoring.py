@@ -2,8 +2,8 @@
 from __future__ import annotations
 
 import pytest
-from deceptarr.sources.scoring import detect_season, score_item, season_for_abs_ep
-from deceptarr.adapters.tmdb import TmdbSeriesInfo, TmdbSeason
+from backend.sources.scoring import detect_season, score_item, season_for_abs_ep
+from backend.adapters.tmdb import TmdbSeriesInfo, TmdbSeason
 
 from .conftest import make_item
 

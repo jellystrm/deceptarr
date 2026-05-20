@@ -6,7 +6,7 @@ import os
 import time
 
 import pytest
-from deceptarr.infrastructure.state import StateStore
+from backend.infrastructure.state import StateStore
 
 
 @pytest.fixture
