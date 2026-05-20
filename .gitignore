@@ -8,6 +8,9 @@ downloads/
 .local/
 .env
 
+# Dependencies
+node_modules/
+
 # Build artifacts
 dist/
 frontend/
