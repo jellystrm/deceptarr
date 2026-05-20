@@ -47,6 +47,10 @@ class PhimApiSource(Source):
     """
     Resolves HLS streams from phimapi-compatible APIs (KKPhim, OPhim).
 
+    API docs:
+      KKPhim  — https://kkphim.vip/tai-lieu-api
+      OPhim   — https://ophim17.cc/api-document
+
     Lookup strategy:
       1. Search by title keywords with scoring (threshold 400 to enter, 1000 to accept).
       2. For TV or when search yields nothing: try direct /tmdb/{type}/{tmdb_id} endpoint.

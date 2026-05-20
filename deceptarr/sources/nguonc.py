@@ -24,6 +24,8 @@ def _slugify(text: str) -> str:
 class NguonCSource(Source):
     """Resolves HLS streams from phim.nguonc.com.
 
+    API docs: https://phim.nguonc.com/api-document
+
     NguonC is not PhimAPI-compatible. It exposes search at
     ``/api/films/search`` and detail at ``/api/film/{slug}``, with HLS URLs in
     ``movie.episodes[].items[].m3u8``.

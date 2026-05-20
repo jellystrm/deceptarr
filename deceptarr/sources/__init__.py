@@ -18,6 +18,11 @@ __all__ = [
 
 # Built-in sources — always available without user configuration.
 # User-defined DirectHlsTemplateSource entries can supplement or override these.
+#
+# API documentation:
+#   kkphim  https://kkphim.vip/tai-lieu-api        (PhimAPI-compatible)
+#   ophim   https://ophim17.cc/api-document         (PhimAPI-compatible)
+#   nguonc  https://phim.nguonc.com/api-document    (custom schema)
 BUILTIN_SOURCES: dict[str, str] = {
     "kkphim": "https://phimapi.com",
     "ophim": "https://ophim1.com",
