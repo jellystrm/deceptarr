@@ -111,9 +111,9 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { authLogout, getPipeline, getActivity, type PipelineJob, type ActivityEvent } from './api'
+import { authLogout, getPipeline, getActivity, UnauthorizedError, type PipelineJob, type ActivityEvent } from './api'
 
 const route  = useRoute()
 const router = useRouter()
@@ -123,11 +123,11 @@ const isAuthPage = computed(() => ['/login', '/setup'].includes(route.path))
 const jobs   = ref<PipelineJob[]>([])
 const events = ref<ActivityEvent[]>([])
 
-const activityCount  = computed(() => events.value.length)
-const grabsCount     = computed(() => events.value.filter(e => e.grabs.length > 0).length)
+const activityCount   = computed(() => events.value.length)
+const grabsCount      = computed(() => events.value.filter(e => e.grabs.length > 0).length)
 const activeJobsCount = computed(() => jobs.value.filter(j => j.status !== 'completed' && j.status !== 'error').length)
-const runningCount   = computed(() => jobs.value.filter(j => j.status === 'running').length)
-const errorCount     = computed(() => jobs.value.filter(j => j.status === 'error').length)
+const runningCount    = computed(() => jobs.value.filter(j => j.status === 'running').length)
+const errorCount      = computed(() => jobs.value.filter(j => j.status === 'error').length)
 
 const userInitial = computed(() => {
   const name = localStorage.getItem('deceptarr_user') || 'A'
@@ -149,18 +149,38 @@ const pageTitle = computed(() => {
   return 'Deceptarr'
 })
 
-async function loadJobs()   { try { jobs.value   = await getPipeline() } catch {} }
-async function loadEvents() { try { events.value = await getActivity() } catch {} }
+/** Redirect to /login via router (soft nav, no hard reload) on 401. */
+function handleUnauthorized(e: unknown) {
+  if (e instanceof UnauthorizedError) {
+    localStorage.removeItem('deceptarr_user')
+    router.replace('/login')
+  }
+}
+
+async function loadJobs()   { try { jobs.value   = await getPipeline() } catch (e) { handleUnauthorized(e) } }
+async function loadEvents() { try { events.value = await getActivity() } catch (e) { handleUnauthorized(e) } }
 
 let timer: ReturnType<typeof setInterval>
 
-onMounted(() => {
-  if (!isAuthPage.value) {
-    loadJobs(); loadEvents()
-    timer = setInterval(() => { loadJobs(); loadEvents() }, 5000)
-  }
-})
-onUnmounted(() => clearInterval(timer))
+function startPolling() {
+  if (timer) return
+  loadJobs(); loadEvents()
+  timer = setInterval(() => { loadJobs(); loadEvents() }, 5000)
+}
+
+function stopPolling() {
+  clearInterval(timer)
+  timer = undefined as unknown as ReturnType<typeof setInterval>
+}
+
+// Start/stop polling based on whether we're on an auth page.
+// Watch handles the case where auth state changes after mount.
+watch(isAuthPage, (onAuth) => {
+  if (onAuth) stopPolling()
+  else        startPolling()
+}, { immediate: true })
+
+onUnmounted(stopPolling)
 
 async function logout() {
   await authLogout()

@@ -79,9 +79,14 @@ export type Config = Record<string, unknown>
 
 // ─── Fetch helpers ────────────────────────────────────────────────────────────
 
+/** Thrown when the server returns 401. Let the caller / router guard handle redirect. */
+export class UnauthorizedError extends Error {
+  constructor() { super('Unauthorized'); this.name = 'UnauthorizedError' }
+}
+
 async function get<T>(path: string): Promise<T> {
   const r = await fetch(path, { cache: 'no-store' })
-  if (r.status === 401) { window.location.replace('/login'); throw new Error('Unauthorized') }
+  if (r.status === 401) throw new UnauthorizedError()
   if (!r.ok) throw new Error(`${r.status} ${r.statusText}`)
   return r.json()
 }
@@ -92,7 +97,7 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(body),
   })
-  if (r.status === 401) { window.location.replace('/login'); throw new Error('Unauthorized') }
+  if (r.status === 401) throw new UnauthorizedError()
   if (!r.ok) throw new Error(`${r.status} ${r.statusText}`)
   return r.json()
 }
