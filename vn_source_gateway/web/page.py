@@ -32,7 +32,6 @@ _DASHBOARD_POLL_JS = r"""
     });
     return keys;
   }
-
   function restoreOpen(keys) {
     document.querySelectorAll('#pipeline details').forEach(function (d) {
       var td = d.closest('td');
@@ -40,8 +39,26 @@ _DASHBOARD_POLL_JS = r"""
     });
   }
 
+  function activeTab() {
+    var a = document.querySelector('#pipeline .jd-tab.active');
+    return a ? a.dataset.tab : 'downloads';
+  }
+
+  window.jdSwitchTab = function(tab) {
+    document.querySelectorAll('#pipeline .jd-tab').forEach(function(t) {
+      t.classList.toggle('active', t.dataset.tab === tab);
+    });
+    document.querySelectorAll('#pipeline .jd-pane').forEach(function(p) {
+      p.style.display = (p.id === 'jd-' + tab) ? '' : 'none';
+    });
+    document.querySelectorAll('#pipeline .jd-statusbar').forEach(function(s) {
+      s.style.display = (s.id === 'jd-sb-' + tab) ? '' : 'none';
+    });
+  };
+
   function refresh() {
     var open = openKeys();
+    var tab = activeTab();
     fetch('/dashboard', {cache: 'no-store'})
       .then(function (r) { return r.text(); })
       .then(function (text) {
@@ -51,6 +68,7 @@ _DASHBOARD_POLL_JS = r"""
         var oldCard = document.getElementById('pipeline');
         if (newCard && oldCard) {
           oldCard.replaceWith(newCard);
+          window.jdSwitchTab(tab);
           restoreOpen(open);
         }
       })
@@ -60,9 +78,7 @@ _DASHBOARD_POLL_JS = r"""
   setInterval(refresh, INTERVAL);
   refresh(); // scan immediately on page load
 
-  // Intercept task-action form submits (Retry / Pause / Resume / Delete).
-  // POST via fetch so only #pipeline updates — no full-page reload, no
-  // Indexer card reset.
+  // Intercept task-action and manual-grab form submits via fetch
   document.addEventListener('submit', function (e) {
     if (!e.target.classList.contains('task-actions')) return;
     e.preventDefault();
@@ -70,6 +86,15 @@ _DASHBOARD_POLL_JS = r"""
       .catch(function () {})
       .finally(function () { refresh(); });
   });
+
+  // Bulk toolbar actions (Start All / Pause All / Clear Done)
+  window.jdBulkAction = function(action) {
+    fetch('/tasks/bulk', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/x-www-form-urlencoded'},
+      body: 'action=' + encodeURIComponent(action)
+    }).catch(function(){}).finally(function() { refresh(); });
+  };
 })();
 """
 
@@ -171,7 +196,7 @@ def render_page(settings: Settings, message: str, section: str, settings_tab: st
   <span class="topbar-title">{section_title} <span class="topbar-sub">{_attr(settings.config_path)}</span></span>
 </div>
 
-<main class="main{'' if section == 'dashboard' else ' constrained'}">
+<main class="main{' dashboard' if section == 'dashboard' else ' constrained'}">
   {msg_html}
 
   {content}
@@ -245,141 +270,177 @@ def _time_ago(seconds: int) -> str:
 
 
 def _pipeline_card(settings: Settings) -> str:
-    left = _indexer_card(settings)
-    right = _download_card(settings)
+    """JDownloader-style tabbed layout: LinkGrabber + Downloads tabs."""
+    lg_html, lg_pkgs, lg_links, lg_errors = _indexer_card(settings)
+    dl_html, dl_pkgs, dl_running, dl_errors = _download_card(settings)
+
+    lg_statusbar = (
+        f"<div class='jd-sb-row'>"
+        f"<span class='jd-stat'><span class='jd-stat-label'>Package(s):</span>"
+        f"<span class='jd-stat-val'>{lg_pkgs}</span></span>"
+        f"<span class='jd-stat'><span class='jd-stat-label'>Link(s):</span>"
+        f"<span class='jd-stat-val'>{lg_links}</span></span>"
+        f"<span class='jd-stat'><span class='jd-stat-label'>Online:</span>"
+        f"<span class='jd-stat-val' style='color:var(--green)'>{lg_pkgs - lg_errors}</span></span>"
+        f"<span class='jd-stat'><span class='jd-stat-label'>Offline:</span>"
+        f"<span class='jd-stat-val' style='color:#e06c75'>{lg_errors}</span></span>"
+        f"</div>"
+    )
+    dl_statusbar = (
+        f"<div class='jd-sb-row'>"
+        f"<span class='jd-stat'><span class='jd-stat-label'>Package(s):</span>"
+        f"<span class='jd-stat-val'>{dl_pkgs}</span></span>"
+        f"<span class='jd-stat'><span class='jd-stat-label'>Running:</span>"
+        f"<span class='jd-stat-val' style='color:var(--green)'>{dl_running}</span></span>"
+        f"<span class='jd-stat'><span class='jd-stat-label'>Errors:</span>"
+        f"<span class='jd-stat-val' style='color:#e06c75'>{dl_errors}</span></span>"
+        f"</div>"
+    )
+
     return (
-        "<div id='pipeline' style='"
-        "display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start"
-        "'>"
-        f"{left}{right}"
+        "<div id='pipeline' class='jd-wrap'>"
+        # Toolbar
+        "<div class='jd-toolbar'>"
+        "<button class='jd-tb-btn' title='Resume all paused/error jobs' onclick='jdBulkAction(\"resume_all\")'>&#9654; Start All</button>"
+        "<button class='jd-tb-btn' title='Pause all running jobs' onclick='jdBulkAction(\"pause_all\")'>&#9646;&#9646; Pause All</button>"
+        "<div class='jd-tb-sep'></div>"
+        "<button class='jd-tb-btn' title='Remove completed jobs' onclick='jdBulkAction(\"clear_done\")'>&#10005; Clear Done</button>"
+        "<div class='jd-tb-sep'></div>"
+        "<button class='jd-tb-btn' title='Refresh now' onclick='refresh()' style='margin-left:auto'>&#8635; Refresh</button>"
+        "</div>"
+        # Tabs
+        "<div class='jd-tabbar'>"
+        f"<div class='jd-tab' data-tab='linkgrabber' onclick='jdSwitchTab(\"linkgrabber\")'>"
+        f"&#128279; LinkGrabber <span class='jd-badge'>{lg_pkgs}</span></div>"
+        f"<div class='jd-tab active' data-tab='downloads' onclick='jdSwitchTab(\"downloads\")'>"
+        f"&#11015; Downloads <span class='jd-badge'>{dl_pkgs}</span></div>"
+        "</div>"
+        # Panes
+        f"<div id='jd-linkgrabber' class='jd-pane' style='display:none'>{lg_html}</div>"
+        f"<div id='jd-downloads' class='jd-pane'>{dl_html}</div>"
+        # Status bars
+        f"<div id='jd-sb-linkgrabber' class='jd-statusbar' style='display:none'>{lg_statusbar}</div>"
+        f"<div id='jd-sb-downloads' class='jd-statusbar'>{dl_statusbar}</div>"
         "</div>"
     )
 
 
-def _indexer_card(settings: Settings) -> str:
-    """Card 1: recent indexer searches from Radarr/Sonarr."""
+def _grab_btns(token_esc: str) -> str:
+    """Three tiny inline forms: STRM / MKV / MP4."""
+    def btn(mode: str, container: str, label: str) -> str:
+        cont_field = f"<input type='hidden' name='container' value='{container}'>" if mode == "download" else ""
+        return (
+            f"<form method='post' action='/api/manual-grab' class='task-actions' style='display:inline;margin:0'>"
+            f"<input type='hidden' name='token' value='{token_esc}'>"
+            f"<input type='hidden' name='output_mode' value='{mode}'>"
+            f"{cont_field}"
+            f"<button type='submit' class='jd-tb-btn' style='height:20px;font-size:10px'>{label}</button>"
+            f"</form>"
+        )
+    return btn("strm", "", "STRM") + btn("download", "mkv", "MKV") + btn("download", "mp4", "MP4")
+
+
+def _indexer_card(settings: Settings) -> tuple[str, int, int, int]:
+    """LinkGrabber tab content.  Returns (html, pkg_count, link_count, error_count)."""
     from vn_source_gateway.infrastructure.activity import ActivityLog
     import time as _time
 
     now = int(_time.time())
     events = ActivityLog.get().recent(100)
-    searches = [e for e in events if e.kind == "search"][:15]
+    searches = [e for e in events if e.kind == "search"][:20]
 
     if not searches:
-        body = "<p style='color:var(--muted);font-size:13px;padding:16px'>No indexer queries yet.</p>"
-    else:
-        # Deduplicate: keep the most-recent search per (kind prefix + title).
-        # E.g. "TV: Family Guy" searched twice → show once with most-recent timestamp.
-        seen: dict[str, object] = {}
-        for ev in searches:
-            key = ev.title  # already "TV: Family Guy" or "Movie: Mario"
-            if key not in seen:
-                seen[key] = ev
-        deduped = list(seen.values())
+        return "<div class='jd-empty'>No indexer queries yet.</div>", 0, 0, 0
 
-        rows = []
-        for ev in deduped:
-            age = _time_ago(max(0, now - ev.ts))
-            # Split "TV: Family Guy" → kind="TV", show="Family Guy"
-            if ": " in ev.title:
-                kind_prefix, show_title = ev.title.split(": ", 1)
-            else:
-                kind_prefix, show_title = "", ev.title
-            dot = "ok" if ev.status == "ok" else "err"
-            # results count part: "5 result(s) — sources: ophim" → "5 result(s)"
-            results_part = ev.detail.split(" — ")[0] if " — " in ev.detail else ev.detail
-            # Collapsible result list with per-grab download buttons
-            ev_grabs = getattr(ev, "grabs", []) or []
-            ev_url = getattr(ev, "url", "") or ""
-            link_html = (
-                f"<div style='margin-top:6px'>"
-                f"<a href='{html.escape(ev_url)}' target='_blank' style='font-size:11px;color:var(--accent)'>↗ open XML</a>"
+    # Deduplicate by title (keep most-recent)
+    seen: dict[str, object] = {}
+    for ev in searches:
+        if ev.title not in seen:
+            seen[ev.title] = ev
+    deduped = list(seen.values())
+
+    total_links = sum(
+        len(getattr(ev, "grabs", []) or []) or (
+            int(ev.detail.split(" result")[0].split()[-1])
+            if " result" in ev.detail else 0
+        )
+        for ev in deduped
+    )
+    error_count = sum(1 for ev in deduped if ev.status != "ok")
+
+    rows = []
+    for ev in deduped:
+        age = _time_ago(max(0, now - ev.ts))
+        if ": " in ev.title:
+            kind_prefix, show_title = ev.title.split(": ", 1)
+        else:
+            kind_prefix, show_title = "", ev.title
+        dot_cls = "ok" if ev.status == "ok" else "err"
+        results_part = ev.detail.split(" — ")[0] if " — " in ev.detail else ev.detail
+        ev_grabs = getattr(ev, "grabs", []) or []
+        ev_url = getattr(ev, "url", "") or ""
+        link_btn = (
+            f" <a href='{html.escape(ev_url)}' target='_blank' "
+            f"style='font-size:10px;color:var(--accent)' title='Open XML'>↗</a>"
+        ) if ev_url else ""
+
+        if ev_grabs:
+            shown = ev_grabs[:40]
+            overflow = len(ev_grabs) - len(shown)
+            grab_rows = ""
+            for g in shown:
+                tok = html.escape(g.get("token", ""), quote=True)
+                t = g.get("title", "")
+                for suf in (" [STRM]", " [HLS-DL]"):
+                    if t.endswith(suf):
+                        t = t[:-len(suf)]; break
+                grab_rows += (
+                    f"<div style='display:flex;align-items:center;gap:4px;padding:2px 0;"
+                    f"border-bottom:1px solid var(--border)'>"
+                    f"<span style='flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;"
+                    f"white-space:nowrap;font-size:11px;color:var(--text)'>{html.escape(t)}</span>"
+                    f"<span style='display:flex;gap:2px;flex-shrink:0'>{_grab_btns(tok)}</span>"
+                    f"</div>"
+                )
+            if overflow > 0:
+                grab_rows += f"<div style='font-size:11px;color:var(--muted);padding:2px 0'>…and {overflow} more</div>"
+            xml_link = (
+                f"<div style='margin-top:4px'>"
+                f"<a href='{html.escape(ev_url)}' target='_blank' style='font-size:10px;color:var(--accent)'>↗ open XML</a>"
                 f"</div>"
             ) if ev_url else ""
-            if ev_grabs:
-                # Deduplicate by title (keep first of each mode — prefer strm for display)
-                shown_grabs = ev_grabs[:40]  # cap at 40 items
-                overflow = len(ev_grabs) - len(shown_grabs)
-                grab_rows = ""
-                for g in shown_grabs:
-                    tok = html.escape(g.get("token", ""), quote=True)
-                    title_short = g.get("title", "")
-                    # Strip mode suffix "[STRM]" / "[HLS-DL]" for display
-                    for suf in (" [STRM]", " [HLS-DL]"):
-                        if title_short.endswith(suf):
-                            title_short = title_short[:-len(suf)]
-                            break
-                    grab_rows += (
-                        f"<div style='display:flex;align-items:center;gap:6px;padding:3px 0;"
-                        f"border-bottom:1px solid var(--border);font-size:11px'>"
-                        f"<span style='flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;"
-                        f"white-space:nowrap;color:var(--text)'>{html.escape(title_short)}</span>"
-                        f"<form method='post' action='/api/manual-grab' class='task-actions' style='display:inline;margin:0'>"
-                        f"<input type='hidden' name='token' value='{tok}'>"
-                        f"<input type='hidden' name='output_mode' value='strm'>"
-                        f"<button type='submit' class='btn btn-ghost btn-small' style='font-size:10px;padding:1px 5px'>STRM</button>"
-                        f"</form>"
-                        f"<form method='post' action='/api/manual-grab' class='task-actions' style='display:inline;margin:0'>"
-                        f"<input type='hidden' name='token' value='{tok}'>"
-                        f"<input type='hidden' name='output_mode' value='download'>"
-                        f"<input type='hidden' name='container' value='mkv'>"
-                        f"<button type='submit' class='btn btn-ghost btn-small' style='font-size:10px;padding:1px 5px'>MKV</button>"
-                        f"</form>"
-                        f"<form method='post' action='/api/manual-grab' class='task-actions' style='display:inline;margin:0'>"
-                        f"<input type='hidden' name='token' value='{tok}'>"
-                        f"<input type='hidden' name='output_mode' value='download'>"
-                        f"<input type='hidden' name='container' value='mp4'>"
-                        f"<button type='submit' class='btn btn-ghost btn-small' style='font-size:10px;padding:1px 5px'>MP4</button>"
-                        f"</form>"
-                        f"</div>"
-                    )
-                if overflow > 0:
-                    grab_rows += f"<div style='font-size:11px;color:var(--muted);padding:3px 0'>…and {overflow} more</div>"
-                results_detail = (
-                    f"<details class='pipe-detail'>"
-                    f"<summary>{html.escape(results_part)}</summary>"
-                    f"<div style='margin-top:6px;padding:8px 12px;background:rgba(0,0,0,0.2);"
-                    f"border-radius:6px;border:1px solid var(--border)'>"
-                    f"{grab_rows}{link_html}</div></details>"
-                )
-            else:
-                no_link = (
-                    f" <a href='{html.escape(ev_url)}' target='_blank' style='font-size:11px;color:var(--accent)'>↗</a>"
-                ) if ev_url else ""
-                results_detail = f"<span style='color:var(--muted);font-size:12px'>{html.escape(results_part)}{no_link}</span>"
-            rows.append(
-                "<tr>"
-                f"<td style='color:var(--muted);font-size:11px;white-space:nowrap;padding:8px 10px'>{html.escape(age)}</td>"
-                f"<td style='color:var(--muted);font-size:11px;padding:8px 6px;white-space:nowrap'>{html.escape(kind_prefix)}</td>"
-                f"<td style='padding:8px 10px;font-weight:500'>{html.escape(show_title)}</td>"
-                f"<td style='padding:8px 10px'>{results_detail}</td>"
-                f"<td style='padding:8px 14px'><span class='sdot {dot}'></span></td>"
-                "</tr>"
+            results_cell = (
+                f"<details class='pipe-detail'><summary>{html.escape(results_part)}</summary>"
+                f"<div style='margin-top:4px;padding:6px 10px;background:rgba(0,0,0,0.25);"
+                f"border-radius:5px;border:1px solid var(--border)'>"
+                f"{grab_rows}{xml_link}</div></details>"
             )
-        body = (
-            "<table style='width:100%'><thead><tr>"
-            "<th style='padding:8px 10px'>Time</th>"
-            "<th style='padding:8px 6px'>Type</th>"
-            "<th style='padding:8px 10px'>Title</th>"
-            "<th style='padding:8px 10px'>Results</th>"
-            "<th style='padding:8px 14px'></th>"
-            "</tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
+        else:
+            results_cell = (
+                f"<span style='color:var(--muted);font-size:11px'>{html.escape(results_part)}</span>"
+                f"{link_btn}"
+            )
+
+        rows.append(
+            f"<tr>"
+            f"<td style='white-space:nowrap;font-size:11px;color:var(--muted)'>{html.escape(show_title)}</td>"
+            f"<td style='white-space:nowrap;font-size:11px;color:var(--muted)'>{html.escape(kind_prefix)}</td>"
+            f"<td>{results_cell}</td>"
+            f"<td style='white-space:nowrap;font-size:11px;color:var(--muted)'>{html.escape(age)}</td>"
+            f"<td style='text-align:center'><span class='sdot {dot_cls}'></span></td>"
+            f"</tr>"
         )
 
-    return f"""
-  <div class="card" style="margin:0">
-    <div class="card-header">
-      <div>
-        <div class="card-title">Indexer</div>
-        <div class="card-desc">Recent searches from Radarr / Sonarr</div>
-      </div>
-    </div>
-    <div class="card-body" style="padding:0"><div style="overflow-x:auto">{body}</div></div>
-  </div>"""
+    body = (
+        "<table class='jd-table'><thead><tr>"
+        "<th>Name</th><th>Type</th><th>Results</th><th>When</th><th></th>"
+        "</tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
+    )
+    return body, len(deduped), total_links, error_count
 
 
-def _download_card(settings: Settings) -> str:
-    """Card 2: download jobs with progress bar."""
+def _download_card(settings: Settings) -> tuple[str, int, int, int]:
+    """Downloads tab content.  Returns (html, pkg_count, running_count, error_count)."""
     from vn_source_gateway.infrastructure.activity import ActivityLog
     import time as _time
 
@@ -399,7 +460,10 @@ def _download_card(settings: Settings) -> str:
         if ev.ref:
             events_by_ref.setdefault(ev.ref, []).append(ev)
 
+    running_count = 0
+    error_count = 0
     rows = []
+
     for job in jobs:
         state = str(job.get("state", ""))
         progress = float(job.get("progress", 0))
@@ -412,52 +476,50 @@ def _download_card(settings: Settings) -> str:
         added_on = int(job.get("added_on", 0))
         age = _time_ago(max(0, now - added_on)) if added_on else ""
 
-        # Stage
-        if state in {"uploading", "pausedUP"}:
-            stage = "done"
-        elif is_error:
+        if is_error:
+            error_count += 1
             stage = "error"
+        elif state in {"uploading", "pausedUP"}:
+            stage = "done"
         elif state in {"downloading", "queuedDL"}:
+            running_count += 1
             stage = "saving" if progress >= 0.35 else "matching"
         elif state == "pausedDL":
             stage = "paused"
         else:
             stage = "matching"
 
-        # Progress bar fill %
         if stage == "done":
-            pct = 100
-            bar_cls = "done"
-            stage_label = "Done"
+            pct, bar_cls = 100, "done"
+            status_txt = "Done"
+            status_color = "var(--accent)"
         elif is_error:
-            pct = max(5, int(progress * 100))
-            bar_cls = "fail"
-            stage_label = f"Error — {error_msg[:60]}" if error_msg else "Error"
+            pct, bar_cls = max(5, int(progress * 100)), "fail"
+            status_txt = f"Error — {error_msg[:50]}" if error_msg else "Error"
+            status_color = "#e06c75"
         elif stage == "paused":
-            pct = max(5, int(progress * 100))
-            bar_cls = "pulse"
-            stage_label = f"Paused {int(progress * 100)}%"
+            pct, bar_cls = max(5, int(progress * 100)), "pulse"
+            status_txt = f"Paused {int(progress * 100)}%"
+            status_color = "var(--muted)"
         elif stage == "saving":
-            pct = max(35, int(progress * 100))
-            bar_cls = "pulse"
-            stage_label = f"Saving {int(progress * 100)}%…"
+            pct, bar_cls = max(35, int(progress * 100)), "pulse"
+            status_txt = f"Saving {int(progress * 100)}%…"
+            status_color = "var(--green)"
         elif stage == "matching":
-            pct = 15
-            bar_cls = "pulse"
-            stage_label = "Resolving source…"
+            pct, bar_cls = 15, "pulse"
+            status_txt = "Resolving…"
+            status_color = "var(--muted)"
         else:
-            pct = 5
-            bar_cls = "pulse"
-            stage_label = "Queued"
+            pct, bar_cls = 5, "pulse"
+            status_txt = "Queued"
+            status_color = "var(--muted)"
 
         progress_cell = (
-            f"<div style='display:flex;flex-direction:column;gap:5px'>"
-            f"<div class='pbar'>"
+            f"<div style='display:flex;flex-direction:column;gap:3px'>"
+            f"<div class='pbar' style='width:140px'>"
             f"<div class='pbar-fill {bar_cls}' style='width:{pct}%'></div>"
             f"<div class='pbar-txt'>{pct}%</div>"
-            f"</div>"
-            f"<div style='font-size:11px;color:var(--muted)'>{html.escape(stage_label)}</div>"
-            f"</div>"
+            f"</div></div>"
         )
 
         # Detail panel
@@ -468,7 +530,7 @@ def _download_card(settings: Settings) -> str:
 
         match_msg = (resolved_ev.detail if resolved_ev
                      else (grab_ev.detail if grab_ev
-                           else ("resolving source…" if stage == "matching" else "—")))
+                           else ("resolving…" if stage == "matching" else "—")))
         save_msg = (error_msg if is_error
                     else (f"writing… {int(progress * 100)}%" if stage == "saving"
                           else (done_ev.detail.replace("Done — ", "") if done_ev
@@ -484,59 +546,46 @@ def _download_card(settings: Settings) -> str:
                   else str(job.get("tags", "") or job.get("category", "") or "—"))
 
         # Action buttons
-        buttons = ""
+        btns = ""
         if is_error:
-            buttons += "<button type='submit' name='action' value='resume' class='btn btn-ghost btn-small'>Retry</button>"
+            btns += "<button type='submit' name='action' value='resume' class='jd-tb-btn'>Retry</button>"
         elif state in {"downloading", "queuedDL"}:
-            buttons += "<button type='submit' name='action' value='pause' class='btn btn-ghost btn-small'>Pause</button>"
+            btns += "<button type='submit' name='action' value='pause' class='jd-tb-btn'>Pause</button>"
         elif state == "pausedDL":
-            buttons += "<button type='submit' name='action' value='resume' class='btn btn-ghost btn-small'>Resume</button>"
-        buttons += "<button type='submit' name='action' value='delete' class='btn btn-danger btn-small'>Delete</button>"
+            btns += "<button type='submit' name='action' value='resume' class='jd-tb-btn'>Resume</button>"
+        btns += "<button type='submit' name='action' value='delete' class='jd-tb-btn' style='color:#e06c75;border-color:rgba(224,108,117,0.4)'>Delete</button>"
 
         name_cell = (
-            f"<div style='font-weight:500'>{html.escape(str(job.get('name', '')))}</div>"
-            + (f"<div style='font-size:11px;color:var(--muted);margin-top:2px'>{html.escape(age)}</div>" if age else "")
+            f"<div style='font-weight:500;font-size:12px'>{html.escape(str(job.get('name', '')))}</div>"
+            + (f"<div style='font-size:10px;color:var(--muted);margin-top:1px'>{html.escape(age)}</div>" if age else "")
             + detail_html
         )
 
         rows.append(
-            "<tr>"
-            f"<td style='padding:12px 16px'>{name_cell}</td>"
-            f"<td style='padding:12px 10px;white-space:nowrap'>{progress_cell}</td>"
-            f"<td style='color:var(--muted);font-size:12px;padding:12px 10px'>{html.escape(source)}</td>"
-            f"<td style='color:var(--muted);font-size:12px;padding:12px 10px' title='{_attr(save_path)}'>{html.escape(path_display)}</td>"
-            "<td style='white-space:nowrap;padding:12px 10px'>"
-            f"<form method='post' action='/tasks/action' class='task-actions'>"
+            f"<tr>"
+            f"<td>{name_cell}</td>"
+            f"<td style='white-space:nowrap'>{progress_cell}</td>"
+            f"<td style='font-size:11px;color:{status_color};white-space:nowrap'>{html.escape(status_txt)}</td>"
+            f"<td style='font-size:11px;color:var(--muted)'>{html.escape(source)}</td>"
+            f"<td style='font-size:11px;color:var(--muted)' title='{_attr(save_path)}'>{html.escape(path_display)}</td>"
+            f"<td style='white-space:nowrap'>"
+            f"<form method='post' action='/tasks/action' class='task-actions' style='display:flex;gap:4px'>"
             f"<input type='hidden' name='hashes' value='{task_hash}'>"
-            f"{buttons}</form></td>"
-            "</tr>"
+            f"{btns}</form></td>"
+            f"</tr>"
         )
 
     if not rows:
-        body = "<p style='color:var(--muted);font-size:13px;padding:16px'>No download tasks yet.</p>"
+        body = "<div class='jd-empty'>No download tasks yet.</div>"
     else:
         body = (
-            "<table style='width:100%'><thead><tr>"
-            "<th style='padding:10px 16px'>Task Name</th>"
-            "<th style='padding:10px 10px'>Progress</th>"
-            "<th style='padding:10px 10px'>Source</th>"
-            "<th style='padding:10px 10px'>File</th>"
-            "<th style='padding:10px 10px'>Actions</th>"
+            "<table class='jd-table'><thead><tr>"
+            "<th>Name</th><th>Progress</th><th>Status</th>"
+            "<th>Source</th><th>Save to</th><th>Actions</th>"
             "</tr></thead><tbody>" + "".join(rows) + "</tbody></table>"
         )
 
-    return f"""
-  <div class="card" style="margin:0">
-    <div class="card-header">
-      <div>
-        <div class="card-title">Download Tasks</div>
-        <div class="card-desc">Grab → resolve source → save</div>
-      </div>
-    </div>
-    <div class="card-body" style="padding:0">
-      <div style="overflow-x:auto">{body}</div>
-    </div>
-  </div>"""
+    return body, len(jobs), running_count, error_count
 
 
 def _pipeline_steps(stage: str, is_error: bool, progress: float) -> str:

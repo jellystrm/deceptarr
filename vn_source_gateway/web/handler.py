@@ -93,6 +93,8 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
                 else:
                     test_connections(settings)
                 self._redirect("/settings?tab=" + section)
+            elif path == "/tasks/bulk":
+                self._handle_tasks_bulk()
             elif path == "/api/manual-grab":
                 self._handle_manual_grab()
             elif path == "/api/source-test":
@@ -286,6 +288,32 @@ def build_handler() -> type[BaseHTTPRequestHandler]:
                         ref=job_id,
                     )
             self._send_text("Ok.\n")
+
+        def _handle_tasks_bulk(self) -> None:
+            """Bulk actions: resume_all, pause_all, clear_done."""
+            form = self._read_form()
+            settings = Settings.load()
+            action = form.get("action", "")
+            from vn_source_gateway.infrastructure.jobs import JobStore
+            store = JobStore(settings.state_path)
+            jobs = store.list_jobs()
+            if action == "resume_all":
+                hashes = ",".join(j.job_id for j in jobs if j.status in {"paused", "error", "queued"} and not j.paused)
+                if hashes:
+                    qbittorrent.pause(settings, hashes, False)
+            elif action == "pause_all":
+                hashes = ",".join(j.job_id for j in jobs if j.status == "running")
+                if hashes:
+                    qbittorrent.pause(settings, hashes, True)
+            elif action == "clear_done":
+                hashes = ",".join(j.job_id for j in jobs if j.status == "completed")
+                if hashes:
+                    qbittorrent.delete(settings, hashes)
+            accept = self.headers.get("Accept", "")
+            if "text/html" in accept:
+                self._redirect("/dashboard")
+            else:
+                self._send_text("Ok.\n")
 
         def _handle_manual_grab(self) -> None:
             """Queue a release from a grab token with an optional output_mode/container override."""
