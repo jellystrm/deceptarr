@@ -121,74 +121,31 @@
 
           <!-- TV -->
           <template v-else>
-            <template v-for="season in group.seasons" :key="season.key">
-              <div
-                class="tree-row season"
-                :class="{ collapsed: collapsedSeasons.has(season.key) }"
-                @click="toggleSeason(season.key)"
-              >
-                <span class="label">{{ season.label }}</span>
-                <div class="meta">
-                  <span>{{ season.count }} tasks</span>
-                  <button v-if="canPauseAny(seasonJobs(season))" class="row-action" title="Pause season tasks" @click.stop="pauseJobs(season.jobIds)"><PauseIcon /></button>
-                  <button v-else-if="canResumeAny(seasonJobs(season))" class="row-action" title="Resume season tasks" @click.stop="resumeJobs(season.jobIds)"><PlayIcon /></button>
-                  <button class="row-action danger" title="Remove season tasks" @click.stop="removeJobs(season.jobIds)"><TrashIcon /></button>
-                  <button class="icon-mini" :title="collapsedSeasons.has(season.key) ? 'Expand' : 'Collapse'" @click.stop="toggleSeason(season.key)">
-                    <svg class="tree-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="6 9 12 15 18 9"/>
-                    </svg>
-                  </button>
-                </div>
+            <div class="dl-thead-tv">
+              <span>Season</span><span>Episode</span><span>File</span><span>Output</span><span>Status</span><span>Progress</span><span>Action</span>
+            </div>
+            <div v-for="job in tvJobs(group)" :key="job.id" class="dl-variant tv-flat">
+              <span class="tv-meta">S{{ job.season || 1 }}</span>
+              <span class="tv-meta">{{ job.episode ? `E${job.episode}` : 'Pack' }}</span>
+              <span class="var-file">{{ job.save_path || job.hls_url || job.title }}</span>
+              <span class="var-types">
+                <span :class="['pill flat', outputModePill(job.output_mode)]">{{ job.output_mode.toUpperCase() }}</span>
+              </span>
+              <span>
+                <span class="status-cell">
+                  <span :class="['pill', statusPill(job.status)]">{{ job.status }}</span>
+                  <span v-if="job.error" class="status-error">{{ job.error }}</span>
+                </span>
+              </span>
+              <div class="var-prog pct-only">
+                {{ pct(job) }}%
               </div>
-              <div class="tree-children">
-                <template v-for="episode in season.episodes" :key="episode.key">
-                  <div
-                    class="tree-row episode"
-                    :class="{ collapsed: collapsedEpisodes.has(episode.key) }"
-                    @click="toggleEpisode(episode.key)"
-                  >
-                    <span class="label">{{ episode.label }}</span>
-                    <div class="meta">
-                      <span :class="['pill', statusPill(episode.status)]">{{ episode.status }}</span>
-                      <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-3)">{{ episode.progress }}%</span>
-                      <button v-if="canPauseAny(episode.jobs)" class="row-action" title="Pause episode tasks" @click.stop="pauseJobs(episode.jobIds)"><PauseIcon /></button>
-                      <button v-else-if="canResumeAny(episode.jobs)" class="row-action" title="Resume episode tasks" @click.stop="resumeJobs(episode.jobIds)"><PlayIcon /></button>
-                      <button class="row-action danger" title="Remove episode tasks" @click.stop="removeJobs(episode.jobIds)"><TrashIcon /></button>
-                      <button class="icon-mini" :title="collapsedEpisodes.has(episode.key) ? 'Expand' : 'Collapse'" @click.stop="toggleEpisode(episode.key)">
-                        <svg class="tree-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                          <polyline points="6 9 12 15 18 9"/>
-                        </svg>
-                      </button>
-                    </div>
-                  </div>
-                  <div class="tree-children">
-                    <div class="dl-thead-srv in-episode">
-                      <span>File</span><span>Output</span><span>Status</span><span>Progress</span><span>Action</span>
-                    </div>
-                    <div v-for="job in episode.jobs" :key="job.id" class="dl-variant in-episode">
-                      <span class="var-file">{{ job.save_path || job.hls_url || job.title }}</span>
-                      <span class="var-types">
-                        <span :class="['pill flat', outputModePill(job.output_mode)]">{{ job.output_mode.toUpperCase() }}</span>
-                      </span>
-                      <span>
-                        <span class="status-cell">
-                          <span :class="['pill', statusPill(job.status)]">{{ job.status }}</span>
-                          <span v-if="job.error" class="status-error">{{ job.error }}</span>
-                        </span>
-                      </span>
-                      <div class="var-prog pct-only">
-                        {{ pct(job) }}%
-                      </div>
-                      <span class="leaf-actions">
-                        <button v-if="canPause(job)" class="row-action" title="Pause" @click="act('pause', job.id)"><PauseIcon /></button>
-                        <button v-else-if="canResume(job)" class="row-action" title="Resume" @click="act('resume', job.id)"><PlayIcon /></button>
-                        <button class="row-action danger" title="Remove" @click="removeJobs([job.id])"><TrashIcon /></button>
-                      </span>
-                    </div>
-                  </div>
-                </template>
-              </div>
-            </template>
+              <span class="leaf-actions">
+                <button v-if="canPause(job)" class="row-action" title="Pause" @click="act('pause', job.id)"><PauseIcon /></button>
+                <button v-else-if="canResume(job)" class="row-action" title="Resume" @click="act('resume', job.id)"><PlayIcon /></button>
+                <button class="row-action danger" title="Remove" @click="removeJobs([job.id])"><TrashIcon /></button>
+              </span>
+            </div>
           </template>
 
           <!-- Footer -->
@@ -270,8 +227,6 @@ interface DownloadGroup {
 const jobs = ref<PipelineJob[]>([])
 const activeFilter = ref<'all' | 'running' | 'error'>('all')
 const collapsedPkgs = ref<Set<string>>(new Set())
-const collapsedSeasons = ref<Set<string>>(new Set())
-const collapsedEpisodes = ref<Set<string>>(new Set())
 let timer: ReturnType<typeof setInterval>
 
 // ── Computed ──────────────────────────────────────────────────────────────────
@@ -458,18 +413,6 @@ function togglePkg(key: string) {
   collapsedPkgs.value = s
 }
 
-function toggleSeason(key: string) {
-  const s = new Set(collapsedSeasons.value)
-  if (s.has(key)) s.delete(key); else s.add(key)
-  collapsedSeasons.value = s
-}
-
-function toggleEpisode(key: string) {
-  const s = new Set(collapsedEpisodes.value)
-  if (s.has(key)) s.delete(key); else s.add(key)
-  collapsedEpisodes.value = s
-}
-
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
 function sortJobs(items: PipelineJob[]) {
@@ -537,6 +480,16 @@ function seasonJobs(season: SeasonGroup): PipelineJob[] {
 function groupJobs(group: DownloadGroup): PipelineJob[] {
   if (group.kind === 'movie') return group.jobs
   return group.seasons.flatMap(seasonJobs)
+}
+
+function tvJobs(group: DownloadGroup): PipelineJob[] {
+  return groupJobs(group).sort((a, b) => {
+    const seasonDiff = (a.season || 1) - (b.season || 1)
+    if (seasonDiff) return seasonDiff
+    const episodeDiff = (a.episode || 0) - (b.episode || 0)
+    if (episodeDiff) return episodeDiff
+    return a.output_mode.localeCompare(b.output_mode)
+  })
 }
 
 onMounted(() => { load(); timer = setInterval(load, 5000) })
@@ -611,6 +564,13 @@ onUnmounted(() => clearInterval(timer))
   font-size: 11.5px;
 }
 
+.tv-meta {
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
 .pkg-foot {
   padding: 10px 18px;
   font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3);
@@ -643,6 +603,30 @@ onUnmounted(() => clearInterval(timer))
 :global(.dl-variant.in-episode) {
   grid-template-columns: minmax(220px, 1fr) 90px minmax(190px, 320px) 78px 180px;
   padding-left: 18px;
+}
+
+:global(.dl-thead-tv),
+:global(.dl-variant.tv-flat) {
+  display: grid;
+  grid-template-columns: 70px 80px minmax(220px, 1fr) 90px minmax(190px, 320px) 78px 76px;
+  gap: 14px;
+  align-items: center;
+  padding: 8px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+:global(.dl-thead-tv) {
+  background: var(--bg-2);
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+:global(.dl-variant.tv-flat) {
+  min-height: 38px;
 }
 
 :global(.dl-variant .var-prog.pct-only) {
