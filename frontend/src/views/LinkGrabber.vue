@@ -308,8 +308,15 @@ const visibleGroups  = computed(() => deduplicatedEvents.value.map(toMediaNode))
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 
+let initialLoadDone = false
+
 async function load() {
   try { events.value = await getActivity() } catch {}
+  if (!initialLoadDone) {
+    initialLoadDone = true
+    const keys = visibleGroups.value.map(g => g.key)
+    if (keys.length > 1) collapsedPkgs.value = new Set(keys.slice(1))
+  }
 }
 
 async function grab(token: string, mode: string) {

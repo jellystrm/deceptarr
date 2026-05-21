@@ -360,8 +360,15 @@ const hiddenJobsCount = computed(() => _groupsResult.value.hiddenJobs)
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 
+let initialLoadDone = false
+
 async function load() {
   try { jobs.value = await getPipeline() } catch {}
+  if (!initialLoadDone) {
+    initialLoadDone = true
+    const keys = downloadGroups.value.map(g => g.key)
+    if (keys.length > 1) collapsedPkgs.value = new Set(keys.slice(1))
+  }
 }
 
 async function act(action: 'resume' | 'pause' | 'delete', id: string) {
