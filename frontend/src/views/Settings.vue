@@ -11,7 +11,7 @@
     <div class="subnav">
       <template v-for="s in sections" :key="s.id">
         <div v-if="s.id === 'sep'" class="subnav-sep"></div>
-        <button v-else :class="{ active: active === s.id }" @click="active = s.id">
+        <button v-else :class="{ active: active === s.id }" @click="setActive(s.id)">
           <!-- connection icons -->
           <svg v-if="s.icon === 'radarr'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 2v20M2 12h20"/></svg>
           <svg v-else-if="s.icon === 'sonarr'" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/></svg>
@@ -53,7 +53,7 @@
       <div class="fcard-foot">
         <span v-if="saved"     class="save-ok">✓ Saved</span>
         <span v-if="saveError" class="save-err">{{ saveError }}</span>
-        <button class="btn primary" @click="save" :disabled="saving">{{ saving ? 'Saving…' : 'Save' }}</button>
+        <button class="btn primary" @click="save" :disabled="saving || !isDirty">{{ saving ? 'Saving…' : 'Save' }}</button>
       </div>
     </div>
 
@@ -83,7 +83,7 @@
       <div class="fcard-foot">
         <span v-if="saved"     class="save-ok">✓ Saved</span>
         <span v-if="saveError" class="save-err">{{ saveError }}</span>
-        <button class="btn primary" @click="save" :disabled="saving">{{ saving ? 'Saving…' : 'Save' }}</button>
+        <button class="btn primary" @click="save" :disabled="saving || !isDirty">{{ saving ? 'Saving…' : 'Save' }}</button>
       </div>
     </div>
 
@@ -115,7 +115,7 @@
       <div class="fcard-foot">
         <span v-if="saved"     class="save-ok">✓ Saved</span>
         <span v-if="saveError" class="save-err">{{ saveError }}</span>
-        <button class="btn primary" @click="save" :disabled="saving">{{ saving ? 'Saving…' : 'Save' }}</button>
+        <button class="btn primary" @click="save" :disabled="saving || !isDirty">{{ saving ? 'Saving…' : 'Save' }}</button>
       </div>
     </div>
 
@@ -137,7 +137,7 @@
       <div class="fcard-foot">
         <span v-if="saved"     class="save-ok">✓ Saved</span>
         <span v-if="saveError" class="save-err">{{ saveError }}</span>
-        <button class="btn primary" @click="save" :disabled="saving">{{ saving ? 'Saving…' : 'Save' }}</button>
+        <button class="btn primary" @click="save" :disabled="saving || !isDirty">{{ saving ? 'Saving…' : 'Save' }}</button>
       </div>
     </div>
 
@@ -236,7 +236,7 @@
       <div class="fcard-foot">
         <span v-if="saved"     class="save-ok">✓ Saved</span>
         <span v-if="saveError" class="save-err">{{ saveError }}</span>
-        <button class="btn primary" @click="save" :disabled="saving">{{ saving ? 'Saving…' : 'Save' }}</button>
+        <button class="btn primary" @click="save" :disabled="saving || !isDirty">{{ saving ? 'Saving…' : 'Save' }}</button>
       </div>
     </div>
 
@@ -328,7 +328,7 @@
       <div class="fcard-foot">
         <span v-if="saved"     class="save-ok">✓ Saved</span>
         <span v-if="saveError" class="save-err">{{ saveError }}</span>
-        <button class="btn primary" @click="save" :disabled="saving">{{ saving ? 'Saving…' : 'Save' }}</button>
+        <button class="btn primary" @click="save" :disabled="saving || !isDirty">{{ saving ? 'Saving…' : 'Save' }}</button>
       </div>
     </div>
 
@@ -364,7 +364,7 @@
       <div class="fcard-foot">
         <span v-if="saved"     class="save-ok">✓ Saved</span>
         <span v-if="saveError" class="save-err">{{ saveError }}</span>
-        <button class="btn primary" @click="save" :disabled="saving">{{ saving ? 'Saving…' : 'Save' }}</button>
+        <button class="btn primary" @click="save" :disabled="saving || !isDirty">{{ saving ? 'Saving…' : 'Save' }}</button>
       </div>
     </div>
 
@@ -412,15 +412,36 @@
       <div class="fcard-foot">
         <span v-if="saved"     class="save-ok">✓ Saved</span>
         <span v-if="saveError" class="save-err">{{ saveError }}</span>
-        <button class="btn primary" @click="save" :disabled="saving">{{ saving ? 'Saving…' : 'Save' }}</button>
+        <button class="btn primary" @click="save" :disabled="saving || !isDirty">{{ saving ? 'Saving…' : 'Save' }}</button>
       </div>
     </div>
 
   </div>
+
+  <!-- Unsaved changes confirm modal -->
+  <teleport to="body">
+    <div v-if="confirmVisible" class="confirm-overlay" @click.self="confirmStay">
+      <div class="confirm-box">
+        <div class="confirm-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </div>
+        <div class="confirm-body">
+          <p class="confirm-title">Unsaved changes</p>
+          <p class="confirm-msg">{{ confirmMsg }}</p>
+        </div>
+        <div class="confirm-actions">
+          <button class="btn ghost sm" @click="confirmStay">Stay</button>
+          <button class="btn sm" @click="confirmDiscard">Discard</button>
+          <button class="btn primary sm" @click="confirmDoSave">Save &amp; continue</button>
+        </div>
+      </div>
+    </div>
+  </teleport>
 </template>
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
 import { getConfig, saveSettings, checkFfmpeg, type FfmpegCheckResult } from '../api'
 
 const sectionBackendId: Record<string, string> = {
@@ -428,6 +449,20 @@ const sectionBackendId: Record<string, string> = {
   output:   'runtime',
   dlclient: 'downloader',
   schedule: 'schedule',
+}
+
+// Fields that belong to each settings section (for per-section dirty tracking)
+const SECTION_FIELDS: Record<string, string[]> = {
+  radarr:   ['radarr_url', 'radarr_api_key', 'movie_enabled', 'movie_strm_root'],
+  sonarr:   ['sonarr_url', 'sonarr_api_key', 'series_enabled', 'series_strm_root'],
+  jellyfin: ['jellyfin_url', 'jellyfin_api_key', 'jellyfin_scan_after_strm'],
+  tasks:    ['tmdb_api_key'],
+  schedule: ['movie_enabled', 'movie_poll_interval_seconds', 'movie_max_items_per_poll',
+             'series_enabled', 'series_poll_interval_seconds', 'series_max_items_per_poll', 'auto_grab'],
+  output:   ['default_output_mode', 'download_container', 'import_mode', 'ffmpeg_path', 'ffmpeg_extra_args'],
+  indexer:  ['public_base_url'],
+  dlclient: ['ui_host', 'ui_port', 'qb_username', 'qb_password', 'download_root',
+             'retry_after_seconds', 'job_detail_retention_hours'],
 }
 
 const sections = [
@@ -445,12 +480,83 @@ const sections = [
   { id: 'dlclient', label: 'Download Client', icon: 'dlclient' },
 ]
 
-const active    = ref('radarr')
+const active      = ref('radarr')
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-const cfg       = ref<Record<string, any>>({})
+const cfg         = ref<Record<string, any>>({})
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+const originalCfg = ref<Record<string, any>>({})
 const saving    = ref(false)
 const saved     = ref(false)
 const saveError = ref('')
+
+// ── Dirty tracking ────────────────────────────────────────────────────────────
+function sectionSnapshot(section: string) {
+  const fields = SECTION_FIELDS[section] || []
+  return JSON.stringify(Object.fromEntries(fields.map(f => [f, originalCfg.value[f]])))
+}
+function sectionCurrent(section: string) {
+  const fields = SECTION_FIELDS[section] || []
+  return JSON.stringify(Object.fromEntries(fields.map(f => [f, cfg.value[f]])))
+}
+const isDirty = computed(() => sectionCurrent(active.value) !== sectionSnapshot(active.value))
+
+// ── Unsaved-changes confirm modal ─────────────────────────────────────────────
+const confirmVisible = ref(false)
+const confirmMsg     = ref('')
+let   _pendingAction: (() => void) | null = null
+let   _pendingNavNext: ((v?: boolean | string) => void) | null = null
+
+function _showConfirm(msg: string, onConfirm: () => void) {
+  confirmMsg.value    = msg
+  _pendingAction      = onConfirm
+  confirmVisible.value = true
+}
+function confirmStay() {
+  confirmVisible.value = false
+  _pendingNavNext?.(false)
+  _pendingNavNext = null
+  _pendingAction  = null
+}
+async function confirmDoSave() {
+  confirmVisible.value = false
+  await save()
+  const act = _pendingAction
+  _pendingAction = null
+  _pendingNavNext?.()
+  _pendingNavNext = null
+  act?.()
+}
+function confirmDiscard() {
+  // Restore original values for the current section
+  const fields = SECTION_FIELDS[active.value] || []
+  for (const f of fields) cfg.value[f] = JSON.parse(JSON.stringify(originalCfg.value[f] ?? null))
+  confirmVisible.value = false
+  const act = _pendingAction
+  _pendingAction = null
+  _pendingNavNext?.()
+  _pendingNavNext = null
+  act?.()
+}
+
+// ── Tab switching with dirty check ────────────────────────────────────────────
+function setActive(id: string) {
+  if (id === active.value || id === 'sep') return
+  if (!isDirty.value) { active.value = id; return }
+  _showConfirm(
+    `Unsaved changes in ${sections.find(s => s.id === active.value)?.label ?? active.value}.`,
+    () => { active.value = id },
+  )
+}
+
+// ── Route leave guard ─────────────────────────────────────────────────────────
+onBeforeRouteLeave((_, __, next) => {
+  if (!isDirty.value) { next(); return }
+  _pendingNavNext = next
+  _showConfirm(
+    `Unsaved changes in ${sections.find(s => s.id === active.value)?.label ?? active.value}.`,
+    () => {},
+  )
+})
 const keyCopied     = ref(false)
 const keyRegen      = ref(false)
 const keyRegenDone  = ref(false)
@@ -535,6 +641,9 @@ async function save() {
     const backendSection = sectionBackendId[active.value] || active.value
     const payload: Record<string, unknown> = { _section: backendSection, ...cfg.value }
     await saveSettings(payload)
+    // Sync snapshot so button goes back to disabled
+    const fields = SECTION_FIELDS[active.value] || []
+    for (const f of fields) originalCfg.value[f] = JSON.parse(JSON.stringify(cfg.value[f] ?? null))
     saved.value = true
     setTimeout(() => { saved.value = false }, 2500)
   } catch (e: unknown) {
@@ -546,7 +655,9 @@ async function save() {
 
 onMounted(async () => {
   try {
-    cfg.value = await getConfig() as Record<string, any>
+    const loaded = await getConfig() as Record<string, any>
+    cfg.value         = loaded
+    originalCfg.value = JSON.parse(JSON.stringify(loaded))
     const ms = cfg.value.movie_poll_interval_seconds  || 300
     const ss = cfg.value.series_poll_interval_seconds || 3600
     moviePollUnit.value  = ms  >= 3600 && ms  % 3600 === 0 ? 'hours' : 'minutes'
@@ -666,4 +777,27 @@ onMounted(async () => {
 .ff-checking { background: var(--surface-2); color: var(--text-3); }
 .ff-ok  { background: var(--teal-soft);   color: var(--teal);   border: 1px solid var(--teal-line); }
 .ff-err { background: var(--red-soft);    color: var(--red);    border: 1px solid var(--red-line); }
+
+/* ── Unsaved changes modal (teleported, not scoped) ── */
+</style>
+
+<style>
+.confirm-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(0,0,0,.55); backdrop-filter: blur(3px);
+  display: flex; align-items: center; justify-content: center;
+}
+.confirm-box {
+  background: var(--surface); border: 1px solid var(--border-2);
+  border-radius: 14px; padding: 22px 24px;
+  max-width: 420px; width: calc(100vw - 32px);
+  display: flex; flex-direction: column; gap: 16px;
+  box-shadow: 0 24px 60px rgba(0,0,0,.5);
+}
+.confirm-icon { color: var(--amber, #f5a623); }
+.confirm-title { font-weight: 700; font-size: 15px; color: var(--text-bright); margin: 0 0 4px; }
+.confirm-msg   { font-size: 13px; color: var(--text-2); margin: 0; }
+.confirm-actions {
+  display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap;
+}
 </style>

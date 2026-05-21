@@ -7,7 +7,7 @@
       </div>
       <div style="display:flex;gap:8px">
         <button class="btn ghost" @click="loadConfig" :disabled="saving">Discard</button>
-        <button class="btn primary" @click="save" :disabled="saving">
+        <button class="btn primary" @click="save" :disabled="saving || !isDirty">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13"/><polyline points="7 3 7 8 15 8"/></svg>
           {{ saving ? 'Saving…' : 'Save' }}
         </button>
@@ -18,6 +18,26 @@
       <span v-if="saved"     style="font-size:12px;color:var(--green)">✓ Saved</span>
       <span v-if="saveError" style="font-size:12px;color:var(--red)">{{ saveError }}</span>
     </div>
+
+  <!-- Unsaved changes confirm modal -->
+  <teleport to="body">
+    <div v-if="confirmVisible" class="confirm-overlay" @click.self="confirmStay">
+      <div class="confirm-box">
+        <div class="confirm-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        </div>
+        <div class="confirm-body">
+          <p class="confirm-title">Unsaved changes</p>
+          <p class="confirm-msg">You have unsaved changes in Sources. Save before leaving?</p>
+        </div>
+        <div class="confirm-actions">
+          <button class="btn ghost sm" @click="confirmStay">Stay</button>
+          <button class="btn sm" @click="confirmDiscard">Discard</button>
+          <button class="btn primary sm" @click="confirmDoSave">Save &amp; continue</button>
+        </div>
+      </div>
+    </div>
+  </teleport>
 
     <!-- Source list -->
     <div class="src-list">
@@ -101,7 +121,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import { onBeforeRouteLeave } from 'vue-router'
 import { getConfig, saveSettings } from '../api'
 
 const BUILTINS = ['kkphim', 'ophim', 'nguonc']
@@ -125,9 +146,43 @@ const DEFAULT_VARIANTS = ['Vietsub', 'Lồng tiếng', 'Thuyết minh']
 const order           = ref<string[]>([])
 const variantPriority = ref<Record<string, string[]>>({})
 const autoDownload    = ref<Record<string, boolean>>({})
-const saving          = ref(false)
-const saved           = ref(false)
-const saveError       = ref('')
+const saving    = ref(false)
+const saved     = ref(false)
+const saveError = ref('')
+
+// ── Dirty tracking ────────────────────────────────────────────────────────────
+const originalState = ref('')
+function stateSnapshot() {
+  return JSON.stringify({ order: order.value, vp: variantPriority.value, ad: autoDownload.value })
+}
+const isDirty = computed(() => stateSnapshot() !== originalState.value)
+
+// ── Unsaved changes confirm modal ─────────────────────────────────────────────
+const confirmVisible = ref(false)
+let _pendingNavNext: ((v?: boolean | string) => void) | null = null
+
+function confirmStay() {
+  confirmVisible.value = false
+  _pendingNavNext?.(false)
+  _pendingNavNext = null
+}
+async function confirmDoSave() {
+  confirmVisible.value = false
+  await save()
+  _pendingNavNext?.()
+  _pendingNavNext = null
+}
+function confirmDiscard() {
+  confirmVisible.value = false
+  _pendingNavNext?.()
+  _pendingNavNext = null
+}
+
+onBeforeRouteLeave((_, __, next) => {
+  if (!isDirty.value) { next(); return }
+  _pendingNavNext = next
+  confirmVisible.value = true
+})
 
 function sourceUrl(name: string)   { return BUILTIN_URLS[name] || '' }
 function srcColor(name: string)    { return SRC_COLORS[name] || '' }
@@ -194,6 +249,7 @@ async function save() {
       source_variant_priority_json: JSON.stringify(variantPriority.value),
       source_auto_download_json: JSON.stringify(autoDownload.value),
     })
+    originalState.value = stateSnapshot()   // mark as clean
     saved.value = true
     setTimeout(() => { saved.value = false }, 2500)
   } catch (e: unknown) {
@@ -228,6 +284,8 @@ async function loadConfig() {
     for (const src of BUILTINS) ad[src] = Boolean(rawAD[src])
     autoDownload.value = ad
 
+    // take clean snapshot
+    originalState.value = stateSnapshot()
   } catch {
     order.value = [...BUILTINS]
     const vp: Record<string, string[]> = {}
@@ -235,6 +293,7 @@ async function loadConfig() {
     for (const src of BUILTINS) { vp[src] = [...DEFAULT_VARIANTS]; ad[src] = false }
     variantPriority.value = vp
     autoDownload.value = ad
+    originalState.value = stateSnapshot()
   }
 }
 
