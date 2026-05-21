@@ -31,19 +31,21 @@
       </div>
       <div class="fcard-body">
         <div class="form">
+          <template v-if="mediaType === 'tv'">
+            <div class="field">
+              <label>TVDB ID <span class="hint">primary · like Sonarr</span></label>
+              <input v-model="tvdbId" class="input mono" type="number" :placeholder="defaults.tvdbId || 'optional'" />
+            </div>
+          </template>
           <div class="field">
-            <label>TMDB ID <span class="hint">required</span></label>
-            <input v-model="tmdbId" class="input mono" type="number" :placeholder="defaults.tmdbId" />
+            <label>TMDB ID <span class="hint">{{ mediaType === 'tv' ? 'optional · auto-resolved from TVDB' : 'required' }}</span></label>
+            <input v-model="tmdbId" class="input mono" type="number" :placeholder="mediaType === 'tv' ? 'auto' : defaults.tmdbId" />
           </div>
           <div class="field">
             <label>Title <span class="hint">fuzzy match</span></label>
             <input v-model="title" class="input" :placeholder="defaults.title" />
           </div>
           <template v-if="mediaType === 'tv'">
-            <div class="field">
-              <label>TVDB ID <span class="hint">for ep remap</span></label>
-              <input v-model="tvdbId" class="input mono" type="number" :placeholder="defaults.tvdbId || 'optional'" />
-            </div>
             <div class="field">
               <label>Season <span class="hint">optional</span></label>
               <input v-model="season" class="input mono" type="number" placeholder="all" />

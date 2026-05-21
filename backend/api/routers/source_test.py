@@ -126,25 +126,36 @@ async def source_test(request: Request) -> Response:
     from backend.adapters.tmdb import TmdbClient
     from backend.domain.models import MovieWanted, EpisodeWanted
 
-    if tmdb_id and settings.tmdb_api_key:
+    if settings.tmdb_api_key:
         tmdb = TmdbClient(settings.tmdb_api_key)
-        if media_type == "movie":
-            info = tmdb.get_movie_info(tmdb_id)
-            if info:
+        # Auto-resolve TMDB ID from TVDB ID when only tvdb_id is provided
+        # (mirrors real Sonarr behaviour — Sonarr only sends tvdbid, not tmdbid)
+        if not tmdb_id and tvdb_id and media_type == "tv":
+            resolved = tmdb.tmdb_id_for_tvdb(tvdb_id)
+            if resolved:
+                tmdb_id = resolved
+                test_log.append(f"tvdb_id={tvdb_id} → tmdb_id={tmdb_id} (resolved via TMDB /find)")
+            else:
+                test_log.append(f"tvdb_id={tvdb_id} → could not resolve tmdb_id via TMDB")
+
+        if tmdb_id:
+            if media_type == "movie":
+                info = tmdb.get_movie_info(tmdb_id)
+                if info:
+                    title = title or info.title or ""
+                    year = year or info.series_year or None
+                    test_log.append(f"TMDB movie metadata: title={info.title!r}, year={info.series_year}")
+                else:
+                    test_log.append("TMDB movie metadata lookup returned nothing")
+            else:
+                info = tmdb.get_series_info(tmdb_id)
                 title = title or info.title or ""
                 year = year or info.series_year or None
-                test_log.append(f"TMDB movie metadata: title={info.title!r}, year={info.series_year}")
-            else:
-                test_log.append("TMDB movie metadata lookup returned nothing")
-        else:
-            info = tmdb.get_series_info(tmdb_id)
-            title = title or info.title or ""
-            year = year or info.series_year or None
-            test_log.append(
-                f"TMDB series metadata: title={info.title!r}, year={info.series_year}, "
-                f"seasons={info.total_seasons}, episodes={info.total_episodes}"
-            )
-    elif tmdb_id:
+                test_log.append(
+                    f"TMDB series metadata: title={info.title!r}, year={info.series_year}, "
+                    f"seasons={info.total_seasons}, episodes={info.total_episodes}"
+                )
+    elif tmdb_id or tvdb_id:
         test_log.append("TMDB API key not configured; add Title/Year manually")
 
     sources = build_sources(tmdb_api_key=settings.tmdb_api_key)
