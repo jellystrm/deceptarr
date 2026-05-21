@@ -66,7 +66,20 @@ def process_job(settings: Settings, job_id: str) -> None:
         if hit is None:
             store.update(job_id, search_log=search_log)
             raise RuntimeError("No HLS source found")
-        running = store.update(job_id, progress=0.35, hls_url=hit.hls_url, search_log=search_log)
+        running = store.update(
+            job_id,
+            progress=0.35,
+            hls_url=hit.hls_url,
+            search_log=search_log,
+            source_raw={
+                "source": hit.source_name,
+                "server": hit.server_name,
+                "item": hit.item_name,
+                "hls_url": hit.hls_url,
+                "headers": hit.headers,
+                "raw": hit.raw_data,
+            },
+        )
         ActivityLog.get().add("job", title, f"Resolved via {hit.source_name}", "ok", ref=job_id)
         output = OutputService(settings)
         completed = output.write_strm(running, hit) if job.release.output_mode == "strm" else output.download_hls(running, hit)

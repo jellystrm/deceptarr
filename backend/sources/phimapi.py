@@ -378,7 +378,12 @@ class PhimApiSource(Source):
                 url = item.get("link_m3u8")
                 if url and str(url) not in seen:
                     seen.add(str(url))
-                    hits.append(SourceHit(self.name, str(url), headers, server_name=server_name, item_name=str(item.get("name") or "")))
+                    hits.append(SourceHit(
+                        self.name, str(url), headers,
+                        server_name=server_name,
+                        item_name=str(item.get("name") or ""),
+                        raw_data={"server": server, "item": item},
+                    ))
         return hits
 
     def _episode_hls_from_slug(
@@ -503,6 +508,11 @@ class PhimApiSource(Source):
                 if key not in seen_keys:
                     seen_keys.add(key)
                     log.debug("%s found S%02dE%02d in slug %s: %s", self.name, season, episode, slug, url)
-                    hits.append(SourceHit(self.name, url, {}, server_name=server_name, item_name=ename))
+                    hits.append(SourceHit(
+                        self.name, url, {},
+                        server_name=server_name,
+                        item_name=ename,
+                        raw_data={"server": server, "item": item},
+                    ))
 
         return hits

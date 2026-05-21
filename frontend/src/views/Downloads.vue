@@ -66,8 +66,12 @@
             {{ group.kind === 'movie' ? 'M' : 'TV' }}
           </div>
           <div class="pkg-title-block">
-            <div class="pkg-title">{{ group.title }}</div>
-            <div class="pkg-sub">{{ group.count }} task{{ group.count !== 1 ? 's' : '' }}</div>
+            <div class="pkg-title">
+              {{ group.title }}
+              <span class="id">{{ group.mediaType === 'movie' ? 'movie' : 'tv' }}</span>
+              <a v-if="group.tmdbId" class="id link-id" :href="tmdbUrl(group)" target="_blank" rel="noreferrer" @click.stop>tmdb {{ group.tmdbId }}</a>
+            </div>
+            <div class="pkg-sub">{{ group.count }} task{{ group.count !== 1 ? 's' : '' }}<template v-if="group.year"> · {{ group.year }}</template></div>
           </div>
           <div class="pkg-right">
             <span>{{ group.count }} tasks</span>
@@ -95,17 +99,21 @@
           <!-- MOVIE -->
           <template v-if="group.kind === 'movie'">
             <div class="dl-thead-srv movie-flat">
-              <span>File</span><span>Output</span><span>Status</span><span>Progress</span><span>Action</span>
+              <span>Source</span><span>File</span><span>Output</span><span>Status</span><span>Progress</span><span>Action</span>
             </div>
             <div v-for="job in group.jobs" :key="job.id" class="dl-variant movie-flat">
+              <button class="source-btn" title="Show source raw JSON" @click="showSource(job)">{{ job.source || 'auto' }}</button>
               <span class="var-file">{{ job.save_path || job.hls_url || job.title }}</span>
               <span class="var-types">
                 <span :class="['pill flat', outputModePill(job.output_mode)]">{{ job.output_mode.toUpperCase() }}</span>
               </span>
               <span>
                 <span class="status-cell">
-                  <span :class="['pill', statusPill(job.status)]">{{ job.status }}</span>
-                  <span v-if="job.error" class="status-error">{{ job.error }}</span>
+                  <button
+                    :class="['pill', statusPill(job.status), { clickable: !!job.error }]"
+                    :title="job.error ? 'Show error' : job.status"
+                    @click="job.error && showError(job)"
+                  >{{ job.status }}</button>
                 </span>
               </span>
               <div class="var-prog pct-only">
@@ -122,19 +130,23 @@
           <!-- TV -->
           <template v-else>
             <div class="dl-thead-tv">
-              <span>Season</span><span>Episode</span><span>File</span><span>Output</span><span>Status</span><span>Progress</span><span>Action</span>
+              <span>Season</span><span>Episode</span><span>Source</span><span>File</span><span>Output</span><span>Status</span><span>Progress</span><span>Action</span>
             </div>
             <div v-for="job in tvJobs(group)" :key="job.id" class="dl-variant tv-flat">
               <span class="tv-meta">S{{ job.season || 1 }}</span>
               <span class="tv-meta">{{ job.episode ? `E${job.episode}` : 'Pack' }}</span>
+              <button class="source-btn" title="Show source raw JSON" @click="showSource(job)">{{ job.source || 'auto' }}</button>
               <span class="var-file">{{ job.save_path || job.hls_url || job.title }}</span>
               <span class="var-types">
                 <span :class="['pill flat', outputModePill(job.output_mode)]">{{ job.output_mode.toUpperCase() }}</span>
               </span>
               <span>
                 <span class="status-cell">
-                  <span :class="['pill', statusPill(job.status)]">{{ job.status }}</span>
-                  <span v-if="job.error" class="status-error">{{ job.error }}</span>
+                  <button
+                    :class="['pill', statusPill(job.status), { clickable: !!job.error }]"
+                    :title="job.error ? 'Show error' : job.status"
+                    @click="job.error && showError(job)"
+                  >{{ job.status }}</button>
                 </span>
               </span>
               <div class="var-prog pct-only">
@@ -155,6 +167,19 @@
           </div>
 
         </div>
+      </div>
+    </div>
+
+    <div v-if="modal" class="modal-backdrop" @click="modal = null">
+      <div class="json-modal" @click.stop>
+        <div class="json-modal-head">
+          <div>
+            <h3>{{ modal.title }}</h3>
+            <p>{{ modal.subtitle }}</p>
+          </div>
+          <button class="icon-mini" title="Close" @click="modal = null">×</button>
+        </div>
+        <pre>{{ modal.body }}</pre>
       </div>
     </div>
   </div>
@@ -214,6 +239,9 @@ interface DownloadGroup {
   key: string
   kind: 'movie' | 'tv'
   title: string
+  mediaType: 'movie' | 'tv'
+  tmdbId: number | null
+  year: number | null
   status: string
   count: number
   avgPct: number | null
@@ -227,6 +255,7 @@ interface DownloadGroup {
 const jobs = ref<PipelineJob[]>([])
 const activeFilter = ref<'all' | 'running' | 'error'>('all')
 const collapsedPkgs = ref<Set<string>>(new Set())
+const modal = ref<{ title: string; subtitle: string; body: string } | null>(null)
 let timer: ReturnType<typeof setInterval>
 
 // ── Computed ──────────────────────────────────────────────────────────────────
@@ -281,6 +310,9 @@ const _groupsResult = computed(() => {
       key,
       kind,
       title: first.title,
+      mediaType: first.media_type || (kind === 'movie' ? 'movie' : 'tv'),
+      tmdbId: first.tmdb_id || null,
+      year: first.year || null,
       status: aggregateStatus(items),
       count: items.length,
       avgPct: null,
@@ -389,6 +421,22 @@ async function removeJobs(ids: string[]) {
   await load()
 }
 
+function showSource(job: PipelineJob) {
+  modal.value = {
+    title: `${job.source || 'auto'} source`,
+    subtitle: job.title,
+    body: JSON.stringify(job.source_raw ?? sourceFallback(job), null, 2),
+  }
+}
+
+function showError(job: PipelineJob) {
+  modal.value = {
+    title: 'Job error',
+    subtitle: job.title,
+    body: job.error || 'Unknown error',
+  }
+}
+
 async function bulk(action: 'resume_all' | 'pause_all' | 'clear_done') {
   await bulkAction(action)
   await load()
@@ -455,6 +503,22 @@ function pkgBarColor(status: string): string {
 function outputModePill(mode: string): string {
   if (mode === 'strm') return 'teal'
   return 'blue'
+}
+
+function tmdbUrl(group: DownloadGroup): string {
+  return `https://www.themoviedb.org/${group.mediaType === 'movie' ? 'movie' : 'tv'}/${group.tmdbId}`
+}
+
+function sourceFallback(job: PipelineJob) {
+  return {
+    source: job.source,
+    media_type: job.media_type,
+    tmdb_id: job.tmdb_id,
+    tvdb_id: job.tvdb_id,
+    hls_url: job.hls_url,
+    save_path: job.save_path,
+    search_log: job.search_log || [],
+  }
 }
 
 function canResume(job: PipelineJob): boolean {
@@ -557,6 +621,39 @@ onUnmounted(() => clearInterval(timer))
   font-size: 11px;
 }
 
+.source-btn {
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--blue);
+  cursor: pointer;
+  font: 700 12px/1 var(--font-mono);
+  overflow: hidden;
+  padding: 0;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.source-btn:hover { color: #9cc9ff; text-decoration: underline; }
+
+.pill.clickable {
+  appearance: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.pill.clickable:hover {
+  filter: brightness(1.14);
+}
+
+.link-id {
+  text-decoration: none;
+}
+.link-id:hover {
+  border-color: var(--blue-line);
+  color: #cfe4ff;
+}
+
 .pct-only {
   justify-content: center;
   color: var(--text-2);
@@ -608,7 +705,7 @@ onUnmounted(() => clearInterval(timer))
 :global(.dl-thead-srv.movie-flat),
 :global(.dl-variant.movie-flat) {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) 90px minmax(220px, 360px) 78px 76px !important;
+  grid-template-columns: 92px minmax(180px, .78fr) 90px minmax(130px, 220px) 78px 76px !important;
   gap: 14px;
   align-items: center;
   padding: 8px 18px !important;
@@ -632,7 +729,7 @@ onUnmounted(() => clearInterval(timer))
 :global(.dl-thead-tv),
 :global(.dl-variant.tv-flat) {
   display: grid;
-  grid-template-columns: 70px 80px minmax(220px, 1fr) 90px minmax(190px, 320px) 78px 76px;
+  grid-template-columns: 70px 80px 92px minmax(180px, .78fr) 90px minmax(130px, 220px) 78px 76px;
   gap: 14px;
   align-items: center;
   padding: 8px 18px;
@@ -656,5 +753,51 @@ onUnmounted(() => clearInterval(timer))
 :global(.dl-variant .var-prog.pct-only) {
   display: block;
   min-width: auto;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, .58);
+}
+
+.json-modal {
+  width: min(860px, 92vw);
+  max-height: min(760px, 86vh);
+  overflow: hidden;
+  border: 1px solid var(--border-2);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
+}
+
+.json-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.json-modal-head h3 { margin: 0; font-size: 15px; }
+.json-modal-head p {
+  margin: 3px 0 0;
+  color: var(--text-3);
+  font: 11.5px/1.4 var(--font-mono);
+}
+.json-modal pre {
+  max-height: calc(min(760px, 86vh) - 72px);
+  margin: 0;
+  overflow: auto;
+  padding: 16px;
+  background: var(--bg);
+  color: var(--text-2);
+  font: 11.5px/1.55 var(--font-mono);
+  white-space: pre-wrap;
 }
 </style>

@@ -107,6 +107,22 @@ class TestTorrentInfo:
         assert [item["hash"] for item in radarr] == ["movie-job"]
         assert [item["hash"] for item in sonarr] == ["episode-job"]
 
+    def test_job_store_preserves_source_diagnostics(self, settings):
+        store = JobStore(settings.state_path)
+        store.upsert(
+            GatewayJob(
+                job_id="diag-job", release=_release(), status="error",
+                progress=0.0, created_at=1, updated_at=1,
+                search_log=["[kkphim] search failed"],
+                source_raw={"source": "kkphim", "raw": {"name": "Avengers"}},
+            )
+        )
+
+        job = JobStore(settings.state_path).get("diag-job")
+
+        assert job.search_log == ["[kkphim] search failed"]
+        assert job.source_raw == {"source": "kkphim", "raw": {"name": "Avengers"}}
+
 
 class TestPause:
     def test_pause_sets_flag(self, settings):

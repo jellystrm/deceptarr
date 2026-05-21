@@ -327,7 +327,12 @@ class NguonCSource(Source):
                 url = item.get("m3u8")
                 if url and str(url) not in seen:
                     seen.add(str(url))
-                    hits.append(SourceHit(self.name, str(url), headers, server_name=server_name, item_name=str(item.get("name") or "")))
+                    hits.append(SourceHit(
+                        self.name, str(url), headers,
+                        server_name=server_name,
+                        item_name=str(item.get("name") or ""),
+                        raw_data={"server": server, "item": item},
+                    ))
         return hits
 
     def _episode_hls(
@@ -355,5 +360,10 @@ class NguonCSource(Source):
                 number = int(match.group()) if match else 1
                 if number == episode and str(url) not in seen:
                     seen.add(str(url))
-                    hits.append(SourceHit(self.name, str(url), headers, server_name=server_name, item_name=raw_name))
+                    hits.append(SourceHit(
+                        self.name, str(url), headers,
+                        server_name=server_name,
+                        item_name=raw_name,
+                        raw_data={"server": server, "item": item},
+                    ))
         return hits

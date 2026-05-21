@@ -70,4 +70,6 @@ class JobStore:
             save_path=raw.get("save_path"),
             hls_url=raw.get("hls_url"),
             error=raw.get("error"),
+            search_log=list(raw.get("search_log") or []),
+            source_raw=raw.get("source_raw"),
         )

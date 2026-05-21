@@ -36,6 +36,11 @@ export interface PipelineJob {
   id: string
   title: string
   kind: JobKind
+  media_type?: 'movie' | 'tv'
+  source?: string | null
+  tmdb_id?: number | null
+  tvdb_id?: number | null
+  year?: number | null
   season: number | null
   episode: number | null
   output_mode: 'strm' | 'hls-dl'
@@ -44,6 +49,8 @@ export interface PipelineJob {
   error: string | null
   hls_url: string | null
   save_path: string | null
+  search_log?: string[]
+  source_raw?: unknown
   created_at: number
   updated_at: number
 }

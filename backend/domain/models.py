@@ -44,6 +44,7 @@ class SourceHit:
     headers: dict[str, str]
     server_name: str = ""
     item_name: str = ""
+    raw_data: dict | None = None
 
 
 OutputMode = Literal["strm", "download"]
@@ -81,3 +82,4 @@ class GatewayJob:
     hls_url: str | None = None
     error: str | None = None
     search_log: list[str] = field(default_factory=list)
+    source_raw: dict | None = None
