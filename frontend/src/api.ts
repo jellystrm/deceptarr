@@ -166,3 +166,15 @@ export async function manualGrab(token: string, outputMode: string): Promise<voi
 
 export interface FfmpegCheckResult { ok: boolean; path: string; version: string | null; hint: string | null }
 export const checkFfmpeg = (path = '') => get<FfmpegCheckResult>('/api/check-ffmpeg' + (path ? '?path=' + encodeURIComponent(path) : ''))
+
+export interface OutputPathCheck {
+  roots: {
+    download_root: string
+    movie_strm_root: string
+    series_strm_root: string
+    download_container: string
+  }
+  paths: { key: string; label: string; owner: string; path: string }[]
+  warnings: string[]
+}
+export const checkOutputPaths = () => get<OutputPathCheck>('/api/output-path-test')

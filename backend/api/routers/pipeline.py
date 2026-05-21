@@ -15,6 +15,9 @@ from backend.infrastructure.config import Settings, save_settings, _generate_tor
 from backend.infrastructure.jobs import JobStore
 from backend.api.forms import form_to_config
 from backend.application.grab_service import _enrich_with_tmdb
+from backend.application.output_service import OutputService
+from backend.domain.models import EpisodeWanted, GatewayJob, GatewayRelease, MovieWanted
+from backend.infrastructure.downloader import HlsDownloader
 from backend.interfaces.indexers.torznab import build_releases, search_response, _release_display_title, _release_grab_payload
 
 log = logging.getLogger(__name__)
@@ -73,6 +76,88 @@ def check_ffmpeg(path: str = "") -> JSONResponse:
     except Exception as exc:
         return JSONResponse({"ok": False, "path": check_path, "version": None, "hint": str(exc)})
     return JSONResponse({"ok": True, "path": resolved, "version": version_line, "hint": None})
+
+
+@router.get("/api/output-path-test")
+def output_path_test() -> JSONResponse:
+    """Dry-run the paths Deceptarr will use for STRM and HLS-DL outputs."""
+    settings = Settings.load()
+    output = OutputService(settings)
+    downloader = HlsDownloader(
+        settings.download_root,
+        settings.ffmpeg_path,
+        settings.ffmpeg_extra_args,
+        settings.download_container,
+    )
+
+    movie_release = GatewayRelease(
+        title="Inception",
+        kind="movie",
+        output_mode="strm",
+        source_name=None,
+        query="Inception",
+        year=2010,
+        tmdb_id=27205,
+    )
+    episode_release = GatewayRelease(
+        title="One Piece",
+        kind="episode",
+        output_mode="strm",
+        source_name=None,
+        query="One Piece",
+        year=1999,
+        tmdb_id=37854,
+        season_number=1,
+        episode_number=1,
+    )
+    movie_job = GatewayJob("path-test-movie", movie_release, "queued", 0, 0, 0)
+    episode_job = GatewayJob("path-test-episode", episode_release, "queued", 0, 0, 0)
+    movie = MovieWanted(0, "Inception", 2010, 27205, None)
+    episode = EpisodeWanted(0, 0, "One Piece", "", 1999, 37854, None, None, 1, 1)
+
+    warnings: list[str] = []
+    if settings.movie_strm_root.rstrip("/") == settings.series_strm_root.rstrip("/"):
+        warnings.append("Movie STRM root and Series STRM root are the same; Radarr/Sonarr scans may mix libraries.")
+    if settings.movie_strm_root.rstrip("/") == settings.download_root.rstrip("/"):
+        warnings.append("Movie STRM root equals Download root; STRM files and HLS-DL downloads may mix.")
+    if settings.series_strm_root.rstrip("/") == settings.download_root.rstrip("/"):
+        warnings.append("Series STRM root equals Download root; STRM files and HLS-DL downloads may mix.")
+
+    return JSONResponse({
+        "roots": {
+            "download_root": settings.download_root,
+            "movie_strm_root": settings.movie_strm_root,
+            "series_strm_root": settings.series_strm_root,
+            "download_container": settings.download_container,
+        },
+        "paths": [
+            {
+                "key": "movie_strm",
+                "label": "Movie STRM",
+                "owner": "Radarr scan",
+                "path": output.strm_path(movie_job),
+            },
+            {
+                "key": "series_strm",
+                "label": "Series STRM",
+                "owner": "Sonarr scan",
+                "path": output.strm_path(episode_job),
+            },
+            {
+                "key": "movie_download",
+                "label": "Movie HLS-DL",
+                "owner": "Radarr import",
+                "path": downloader.movie_path(movie),
+            },
+            {
+                "key": "series_download",
+                "label": "Series HLS-DL",
+                "owner": "Sonarr import",
+                "path": downloader.episode_path(episode),
+            },
+        ],
+        "warnings": warnings,
+    })
 
 
 @router.get("/api/config")

@@ -40,6 +40,36 @@
       </div>
     </div>
 
+    <!-- ── Output paths ── -->
+    <div class="section-h" style="margin-top:28px">
+      <div>
+        <h2>Output paths <span class="num-pill">dry-run</span></h2>
+        <p class="desc">Preview where STRM files and HLS-DL downloads will be written before Radarr/Sonarr import scans run.</p>
+      </div>
+      <button class="btn sm" :disabled="pathChecking" @click="testOutputPaths">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+        {{ pathChecking ? 'Checking…' : 'Test output paths' }}
+      </button>
+    </div>
+
+    <div class="fcard" style="margin-bottom:18px">
+      <div class="fcard-body" style="padding:14px 16px">
+        <div v-if="!pathRows.length" class="path-empty">Run the path test to preview configured output locations.</div>
+        <div v-else class="path-grid">
+          <div v-for="row in pathRows" :key="row.key" class="path-row">
+            <div>
+              <div class="path-label">{{ row.label }}</div>
+              <div class="path-owner">{{ row.owner }}</div>
+            </div>
+            <code>{{ row.path }}</code>
+          </div>
+        </div>
+        <div v-if="pathWarnings.length" class="path-warnings">
+          <div v-for="warning in pathWarnings" :key="warning">⚠ {{ warning }}</div>
+        </div>
+      </div>
+    </div>
+
     <!-- ── Testing sandbox ── -->
     <div class="section-h" style="margin-top:28px">
       <div>
@@ -173,7 +203,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, nextTick, onMounted } from 'vue'
-import { getHealth, sourceTest, testIndexer, type HealthResult, type SourceTestRequest, type SourceResult } from '../api'
+import { getHealth, sourceTest, testIndexer, checkOutputPaths, type HealthResult, type SourceTestRequest, type SourceResult } from '../api'
 
 interface Tile {
   name: string; label: string; url: string; urlShort: string
@@ -223,6 +253,9 @@ const episode       = ref('')
 const healthRunning  = ref(false)
 const testingIndexer = ref(false)
 const resolving      = ref(false)
+const pathChecking   = ref(false)
+const pathRows       = ref<{ key: string; label: string; owner: string; path: string }[]>([])
+const pathWarnings   = ref<string[]>([])
 const logLines       = ref<LogLine[]>([])
 const logEl          = ref<HTMLElement | null>(null)
 
@@ -325,6 +358,26 @@ async function runSingle(name: string) {
     if (result) applyHealthResult(name, result, false)
   } catch (e) {
     tile.status = 'error'; tile.dotClass = 'red'; tile.message = String(e)
+  }
+}
+
+async function testOutputPaths() {
+  if (pathChecking.value) return
+  pathChecking.value = true
+  addLog('l-info', '── Output path dry-run ──')
+  try {
+    const result = await checkOutputPaths()
+    pathRows.value = result.paths
+    pathWarnings.value = result.warnings || []
+    addLog('l-info', `download root: ${result.roots.download_root}`)
+    addLog('l-info', `movie STRM root: ${result.roots.movie_strm_root}`)
+    addLog('l-info', `series STRM root: ${result.roots.series_strm_root}`)
+    for (const row of result.paths) addLog('l-ok', `${row.label.padEnd(14)} → ${row.path}`)
+    for (const warning of pathWarnings.value) addLog('l-warn', warning)
+  } catch (e) {
+    addLog('l-err', `Output path test failed: ${e}`)
+  } finally {
+    pathChecking.value = false
   }
 }
 
@@ -440,6 +493,51 @@ onMounted(() => runHealth(false))
 </script>
 
 <style scoped>
+.path-empty {
+  color: var(--text-3);
+  font-size: 13px;
+}
+.path-grid {
+  display: grid;
+  gap: 8px;
+}
+.path-row {
+  display: grid;
+  grid-template-columns: minmax(150px, 220px) minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: rgba(255,255,255,.02);
+}
+.path-label {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 700;
+}
+.path-owner {
+  margin-top: 3px;
+  color: var(--text-3);
+  font-size: 12px;
+}
+.path-row code {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 12px;
+}
+.path-warnings {
+  display: grid;
+  gap: 4px;
+  margin-top: 10px;
+  color: var(--amber);
+  font-size: 12px;
+}
 /* Log trace lines */
 :global(.testlog .l-trace) { color: var(--text-3); }
+@media (max-width: 720px) {
+  .path-row { grid-template-columns: 1fr; }
+}
 </style>

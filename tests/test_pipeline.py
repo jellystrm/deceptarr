@@ -122,3 +122,29 @@ def test_pipeline_enriches_placeholder_job_title(tmp_path, monkeypatch):
 
     assert response.status_code == 200
     assert response.json()[0]["title"] == "The Avengers"
+
+
+def test_output_path_test_returns_radarr_and_sonarr_paths(tmp_path, monkeypatch):
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps({
+            "movie_strm_root": "/Data/Phim/Movies",
+            "series_strm_root": "/Data/Phim/TV Shows",
+            "download_root": "/Data/Downloads",
+            "download_container": "mp4",
+        }),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CONFIG_PATH", str(config_path))
+    client = TestClient(create_app())
+
+    response = client.get("/api/output-path-test")
+
+    assert response.status_code == 200
+    body = response.json()
+    paths = {item["key"]: item["path"] for item in body["paths"]}
+    assert paths["movie_strm"].startswith("/Data/Phim/Movies/Inception (2010)")
+    assert paths["series_strm"].startswith("/Data/Phim/TV Shows/One Piece/Season 01")
+    assert paths["movie_download"].startswith("/Data/Downloads/radarr/Inception (2010)")
+    assert paths["series_download"].startswith("/Data/Downloads/sonarr/One Piece/Season 01")
+    assert paths["movie_download"].endswith(".mp4")
