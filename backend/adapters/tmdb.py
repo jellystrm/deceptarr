@@ -49,6 +49,44 @@ class TmdbClient:
 
     # ── ID resolution ────────────────────────────────────────────────────────
 
+    def tvdb_episode_to_tmdb(self, tvdb_episode_id: int) -> tuple[int, int] | None:
+        """Map a TVDB episode ID → (tmdb_season, tmdb_episode).
+
+        Uses TMDB /find endpoint which accepts TVDB episode IDs and returns the
+        TMDB-canonical season/episode numbers.  Returns None when no match or
+        TMDB is not configured.  Results are cached for the process lifetime.
+        """
+        cache_key = f"tvdb_ep:{tvdb_episode_id}"
+        with _lock:
+            if cache_key in _cache:
+                return _cache[cache_key]
+        result = self._fetch_tvdb_episode(tvdb_episode_id)
+        with _lock:
+            _cache[cache_key] = result
+        return result
+
+    def _fetch_tvdb_episode(self, tvdb_episode_id: int) -> tuple[int, int] | None:
+        if not self.enabled:
+            return None
+        try:
+            r = self.session.get(
+                f"{_BASE}/find/{tvdb_episode_id}",
+                params={"external_source": "tvdb_id"},
+                timeout=10,
+            )
+            r.raise_for_status()
+            results: list[dict[str, Any]] = r.json().get("tv_episode_results", [])
+            if results:
+                ep = results[0]
+                season = ep.get("season_number")
+                episode = ep.get("episode_number")
+                if season is not None and episode is not None:
+                    return int(season), int(episode)
+            return None
+        except Exception as exc:
+            log.debug("TMDB find tvdb_episode=%s failed: %s", tvdb_episode_id, exc)
+            return None
+
     def tmdb_id_for_tvdb(self, tvdb_id: int) -> int | None:
         cache_key = f"tvdb:{tvdb_id}"
         with _lock:

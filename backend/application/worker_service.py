@@ -8,6 +8,7 @@ from collections.abc import Callable
 from dataclasses import replace
 
 from backend.adapters.media_managers import RadarrClient, SonarrClient
+from backend.adapters.tmdb import TmdbClient
 from backend.application.grab_service import _enrich_with_tmdb
 from backend.application.output_service import OutputService
 from backend.domain.models import EpisodeWanted, GatewayJob, GatewayRelease, MovieWanted, SourceHit
@@ -146,11 +147,23 @@ class Worker:
                 episode_number=episode.episode_number,
             )
             release = _enrich_with_tmdb(self.settings, release)
+
+            # Remap TVDB season/episode → TMDB numbering.
+            # Sonarr uses TVDB numbering; Vietnamese sources use TMDB.
+            # TMDB /find/{tvdb_episode_id} returns the canonical TMDB numbers.
+            tmdb_season, tmdb_episode = _remap_tvdb_to_tmdb(
+                self.settings, episode, release.season_number, release.episode_number
+            )
+            if (tmdb_season, tmdb_episode) != (release.season_number, release.episode_number):
+                release = replace(release, season_number=tmdb_season, episode_number=tmdb_episode)
+
             wanted = replace(
                 episode,
                 series_title=release.query or release.title,
                 year=release.year,
                 tmdb_id=release.tmdb_id,
+                season_number=tmdb_season,
+                episode_number=tmdb_episode,
             )
             now = int(time.time())
             existing = self.jobs.get(job_id)
@@ -298,6 +311,47 @@ class Worker:
                 log.info("Resolved %s with %s", label, source_name)
                 return hit
         return None
+
+
+def _remap_tvdb_to_tmdb(
+    settings: Settings,
+    episode: EpisodeWanted,
+    current_season: int | None,
+    current_episode: int | None,
+) -> tuple[int, int]:
+    """Remap TVDB season/episode numbers to TMDB numbering via TMDB /find API.
+
+    Sonarr uses TVDB ordering; Vietnamese sources use TMDB ordering.
+    When a TVDB episode-level ID is available and TMDB is configured, this
+    calls TMDB /find/{tvdb_episode_id}?external_source=tvdb_id to get the
+    canonical TMDB season/episode numbers.
+
+    Returns the original (season, episode) unchanged if:
+    - No TVDB episode ID is available from Sonarr
+    - TMDB API key is not configured
+    - TMDB has no match for the TVDB episode ID
+    - The numbers already match (no-op remap)
+    """
+    original_season = current_season or episode.season_number
+    original_episode = current_episode or episode.episode_number
+
+    if not episode.tvdb_episode_id or not settings.tmdb_api_key:
+        return original_season, original_episode
+
+    mapped = TmdbClient(settings.tmdb_api_key).tvdb_episode_to_tmdb(episode.tvdb_episode_id)
+    if mapped is None:
+        return original_season, original_episode
+
+    new_season, new_episode = mapped
+    if (new_season, new_episode) != (original_season, original_episode):
+        log.info(
+            "TVDB→TMDB remap %r S%02dE%02d → S%02dE%02d (tvdb_ep=%s)",
+            episode.series_title,
+            original_season, original_episode,
+            new_season, new_episode,
+            episode.tvdb_episode_id,
+        )
+    return new_season, new_episode
 
 
 def _resume_interrupted_jobs(settings: Settings) -> None:

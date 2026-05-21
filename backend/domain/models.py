@@ -26,7 +26,8 @@ class EpisodeWanted:
     episode_title: str
     year: int | None
     tmdb_id: int | None
-    tvdb_id: int | None
+    tvdb_id: int | None          # TVDB *series* ID
+    tvdb_episode_id: int | None  # TVDB *episode* ID (used for TVDB→TMDB numbering remap)
     imdb_id: str | None
     season_number: int
     episode_number: int

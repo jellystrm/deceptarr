@@ -113,6 +113,7 @@ class SonarrClient(ArrClient):
                     year=as_int(series.get("year")),
                     tmdb_id=as_int(series.get("tmdbId")),
                     tvdb_id=as_int(series.get("tvdbId")),
+                    tvdb_episode_id=as_int(record.get("tvdbId")),  # episode-level TVDB ID
                     imdb_id=series.get("imdbId"),
                     season_number=int(record["seasonNumber"]),
                     episode_number=int(record["episodeNumber"]),
