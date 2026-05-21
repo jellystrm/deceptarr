@@ -4,7 +4,6 @@ import hashlib
 import re
 import threading
 import time
-import unicodedata
 from email.utils import formatdate
 from html import escape as xml_escape
 
@@ -16,20 +15,13 @@ from backend.infrastructure.activity import ActivityLog
 from backend.infrastructure.config import Settings
 
 # ── Source availability cache ────────────────────────────────────────────────
-# key → (monotonic_ts, {source_name: [matched_server_labels]} | None)
-# None means the check timed out / errored → caller should fall back to all sources.
+# key → (monotonic_ts, {source_name: [available_server_names]} | None)
+# None means the check timed out / errored → caller should fall back to source-only
+# candidates without asserting a specific server label.
 _src_cache: dict[str, tuple[float, dict[str, list[str]] | None]] = {}
 _src_cache_lock = threading.Lock()
 _SRC_CACHE_TTL = 300.0   # 5 minutes
 _SRC_CHECK_TIMEOUT = 6.0  # per-source probe timeout (seconds)
-
-
-def _norm_label(s: str) -> str:
-    """Lowercase + strip diacritics for fuzzy server label matching."""
-    return "".join(
-        c for c in unicodedata.normalize("NFD", s.lower())
-        if unicodedata.category(c) != "Mn"
-    )
 
 
 def _available_sources(
@@ -44,15 +36,11 @@ def _available_sources(
     """Probe all configured sources in parallel.
 
     Return values:
-    - ``{source: [server_labels, ...]}`` — for each source that has the content,
-       lists which configured ``server_labels`` are actually present on that source.
+    - ``{source: [server_names, ...]}`` — for each source that has the content,
+       lists the server names actually found on that source.
        An empty dict means all sources completed but none found the content.
-    - ``None`` — at least one probe timed out with no results; caller should fall
-       back to all sources × all labels so we don't silently hide content.
-
-    The server-label list for a source may contain all configured labels when the
-    source has content but its server names don't match any label (fallback: show
-    all options rather than hiding content).
+    - ``None`` — at least one probe timed out with no results; caller should show
+       source-only candidates so we don't silently hide content or fabricate labels.
 
     Results are cached for 5 minutes at season-level granularity so all per-episode
     requests inside the same season share a single round of HTTP checks.
@@ -64,8 +52,6 @@ def _available_sources(
     placeholder = re.match(r"^(TMDB|TVDB|VN Source)\s*\d*$", title.strip())
     if not title or placeholder:
         return None  # fall back: show all sources
-
-    server_labels: list[str] = settings.server_labels if settings.server_labels else [""]
 
     id_part = str(tmdb_id or tvdb_id or re.sub(r"[^a-z0-9]", "", title.lower())[:40])
     cache_key = f"{kind}:{id_part}:{season or ''}"
@@ -83,7 +69,7 @@ def _available_sources(
     check_episode = episode or 1
 
     # Results per source:
-    #   list[str] → matched server_labels (may be empty if content not found)
+    #   list[str] → actual server names (may be empty if content not found)
     #   None      → probe errored/timed out
     probe_results: dict[str, list[str] | None] = {}
     results_lock = threading.Lock()
@@ -115,27 +101,12 @@ def _available_sources(
                     probe_results[source_name] = []
                 return
 
-            # No server label distinction → content found is enough
-            if server_labels == [""]:
-                with results_lock:
-                    probe_results[source_name] = [""]
-                return
-
-            # Match each configured label against the actual server names returned
             hit_server_names = [h.server_name or "" for h in hits if h.server_name]
-            matched: list[str] = []
-            for label in server_labels:
-                kw = _norm_label(label)
-                if any(kw and kw in _norm_label(sname) for sname in hit_server_names):
-                    matched.append(label)
-
-            # Fallback: source has the content but its server names don't match any
-            # configured label → show all labels rather than silently hiding content.
-            if not matched:
-                matched = list(server_labels)
 
             with results_lock:
-                probe_results[source_name] = matched
+                probe_results[source_name] = list(
+                    dict.fromkeys(s.strip() for s in hit_server_names if s.strip())
+                ) or [""]
         except Exception:
             with results_lock:
                 probe_results[source_name] = None  # error → treated like timeout
@@ -158,8 +129,8 @@ def _available_sources(
         if probe_results.get(name)  # non-None and non-empty
     }
 
-    # If any source timed out and we found nothing, we can't trust the result —
-    # return None so the caller falls back to showing all sources × all labels.
+    # If any source timed out and we found nothing, we can't trust the result.
+    # Return None so the caller falls back to source-only candidates.
     final: dict[str, list[str]] | None
     if any_timeout and not available:
         final = None
@@ -267,19 +238,19 @@ def build_releases(settings: Settings, query: dict[str, list[str]]) -> list[Gate
     year = year or _resolve_year(settings, tmdb_id, tvdb_id, is_tv)
     modes: list[OutputMode] = ["strm", "download"] if settings.expose_both_modes else [_output_mode(settings.default_output_mode)]
 
-    # Server labels: empty list means no server distinction (single label "")
-    server_labels: list[str] = settings.server_labels if settings.server_labels else [""]
+    # Server labels come from source availability. An empty label means
+    # "let the resolver choose from real hits".
 
     # ── Source + server-label pairs: verify which sources have this content
-    #    and which server labels (ViệtSub / Lồng Tiếng / …) each source offers.
+    #    and which server names each source actually offers.
     #
     # _available_sources() probes all configured sources in parallel (≤6 s) using
-    # resolve_movie_all() / resolve_episode_all(), then matches each SourceHit's
-    # server_name against the configured server_labels.
+    # resolve_movie_all() / resolve_episode_all(), then reads each SourceHit's
+    # server_name.
     #
     # Returns:
-    #   dict {source: [labels]}  — sources that have the content and their matched labels
-    #   None                     — timeout / placeholder → fall back to all combinations
+    #   dict {source: [labels]}  — sources that have the content and their real labels
+    #   None                     — timeout / placeholder → fall back to source-only rows
     if not settings.source_order:
         return []  # no sources configured
 
@@ -287,18 +258,19 @@ def build_releases(settings: Settings, query: dict[str, list[str]]) -> list[Gate
     src_server_pairs: list[tuple[str | None, str]]
 
     if settings.torznab_group_sources:
-        # Legacy grouped mode: single auto-select entry per server_label.
-        src_server_pairs = [(None, lbl) for lbl in server_labels]
+        # Legacy grouped mode: one auto-select entry. The resolver will choose the
+        # best real source/server at grab time.
+        src_server_pairs = [(None, "")]
     else:
         verified = _available_sources(
             settings, title, kind, tmdb_id, tvdb_id, season, episode
         )
         if verified is None:
-            # Couldn't verify (timeout / placeholder title) → show all combinations
+            # Couldn't verify (timeout / placeholder title) → show each source once
+            # without claiming a specific server label.
             src_server_pairs = [
-                (src, lbl)
+                (src, "")
                 for src in settings.source_order
-                for lbl in server_labels
             ]
         elif not verified:
             # All sources completed and none have this content → empty feed

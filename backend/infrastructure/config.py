@@ -288,7 +288,6 @@ class Settings:
     jellyfin_scan_after_strm: bool = False
     log_level: str = "INFO"
     job_detail_retention_hours: int = 24
-    server_labels: list[str] = field(default_factory=lambda: ["ViệtSub", "Lồng Tiếng"])
     torznab_group_sources: bool = False
     hls_template_sources: list[dict[str, Any]] = field(default_factory=list)
     source_order: list[str] = field(default_factory=lambda: ["kkphim", "ophim", "nguonc"])
@@ -447,7 +446,6 @@ class Settings:
             ffmpeg_extra_args=ffmpeg_extra_args,
             log_level=str(_file_value(file_data, "log_level", "INFO")),
             job_detail_retention_hours=int(_file_value(file_data, "job_detail_retention_hours", 24)),
-            server_labels=_list_file_value(file_data, "server_labels", ["ViệtSub", "Lồng Tiếng"]),
             torznab_group_sources=bool(_file_value(file_data, "torznab_group_sources", False)),
             hls_template_sources=hls_template_sources,  # type: ignore[arg-type]
             source_order=source_order,
@@ -500,7 +498,6 @@ class Settings:
             "ffmpeg_extra_args": self.ffmpeg_extra_args,
             "log_level": self.log_level,
             "job_detail_retention_hours": self.job_detail_retention_hours,
-            "server_labels": self.server_labels,
             "torznab_group_sources": self.torznab_group_sources,
             "hls_template_sources": self.hls_template_sources,
             "source_order": self.source_order,

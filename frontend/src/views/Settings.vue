@@ -292,10 +292,6 @@
             <input class="input mono" v-model="cfg.public_base_url" placeholder="http://deceptarr:8765" />
           </div>
           <div class="field full">
-            <label>Server Labels <span class="hint">comma-separated</span></label>
-            <input class="input mono" v-model="serverLabels" placeholder="ViệtSub, Lồng Tiếng" />
-          </div>
-          <div class="field full">
             <label class="check">
               <input type="checkbox" v-model="cfg.torznab_group_sources" />
               <span class="check-box"></span>
@@ -445,11 +441,6 @@ const ffmpegArgs = computed({
   get: () => ((cfg.value.ffmpeg_extra_args as string[]) || []).join(', '),
   set: (v: string) => { cfg.value.ffmpeg_extra_args = v.split(',').map((s: string) => s.trim()).filter(Boolean) },
 })
-const serverLabels = computed({
-  get: () => ((cfg.value.server_labels as string[]) || []).join(', '),
-  set: (v: string) => { cfg.value.server_labels = v.split(',').map((s: string) => s.trim()).filter(Boolean) },
-})
-
 async function save() {
   saving.value = true
   saveError.value = ''
@@ -458,7 +449,6 @@ async function save() {
     const backendSection = sectionBackendId[active.value] || active.value
     const payload: Record<string, unknown> = { _section: backendSection, ...cfg.value }
     if (active.value === 'output')  payload.ffmpeg_extra_args = ffmpegArgs.value
-    if (active.value === 'indexer') payload.server_labels     = serverLabels.value
     await saveSettings(payload)
     saved.value = true
     setTimeout(() => { saved.value = false }, 2500)

@@ -5,6 +5,7 @@ import xml.etree.ElementTree as ET
 
 import pytest
 from backend.infrastructure.config import Settings
+from backend.interfaces.indexers import torznab as torznab_mod
 from backend.interfaces.indexers.torznab import build_releases, caps_response, search_response
 
 
@@ -84,7 +85,7 @@ class TestSearchResponse:
 class TestBuildReleases:
     def test_one_release_per_source_and_mode(self, settings):
         releases = build_releases(settings, {"t": ["movie"], "tmdbid": ["24428"]})
-        assert len(releases) >= 2
+        assert len(releases) >= 1
         assert all(r.kind == "movie" for r in releases)
 
     def test_tv_query_produces_episode_kind(self, settings):
@@ -122,3 +123,35 @@ class TestBuildReleases:
         """Fallback: t=search without cat or TV params defaults to movie."""
         releases = build_releases(settings, {"t": ["search"], "q": ["avengers"]})
         assert all(r.kind == "movie" for r in releases)
+
+    def test_verified_source_uses_actual_server_name(self, monkeypatch):
+        from dataclasses import replace
+        s = replace(
+            Settings.load(),
+            source_order=["kkphim"],
+            torznab_group_sources=False,
+        )
+        monkeypatch.setattr(
+            torznab_mod,
+            "_available_sources",
+            lambda *args, **kwargs: {"kkphim": ["Thuyết Minh"]},
+        )
+
+        releases = build_releases(s, {"t": ["movie"], "q": ["Jujutsu Kaisen"]})
+
+        assert {r.source_name for r in releases} == {"kkphim"}
+        assert {r.server_label for r in releases} == {"Thuyết Minh"}
+
+    def test_unverified_source_fallback_does_not_fabricate_server_labels(self, monkeypatch):
+        from dataclasses import replace
+        s = replace(
+            Settings.load(),
+            source_order=["kkphim", "ophim"],
+            torznab_group_sources=False,
+        )
+        monkeypatch.setattr(torznab_mod, "_available_sources", lambda *args, **kwargs: None)
+
+        releases = build_releases(s, {"t": ["movie"], "q": ["Jujutsu Kaisen"]})
+
+        assert {r.source_name for r in releases} == {"kkphim", "ophim"}
+        assert {r.server_label for r in releases} == {""}

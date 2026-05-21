@@ -164,7 +164,6 @@ def form_to_config(form: dict[str, str], current: Settings) -> dict[str, Any]:
     if section == "indexer":
         data["torznab_api_key"] = form.get("torznab_api_key", current.torznab_api_key)
         data["public_base_url"] = form.get("public_base_url", current.public_base_url).strip().rstrip("/")
-        data["server_labels"] = [p.strip() for p in form.get("server_labels", "").split(",") if p.strip()]
         data["torznab_group_sources"] = "torznab_group_sources" in form
         return data
 
@@ -223,6 +222,5 @@ def form_to_config(form: dict[str, str], current: Settings) -> dict[str, Any]:
         "ffmpeg_extra_args": csv("ffmpeg_extra_args"),
         "log_level": form.get("log_level", current.log_level).strip() or "INFO",
         "hls_template_sources": templates,
-        "server_labels": [p.strip() for p in form.get("server_labels", "").split(",") if p.strip()],
         "torznab_group_sources": "torznab_group_sources" in form,
     }
