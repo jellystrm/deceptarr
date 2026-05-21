@@ -107,13 +107,26 @@ def output_path_test() -> JSONResponse:
         query="One Piece",
         year=1999,
         tmdb_id=37854,
+        tvdb_id=81797,
         season_number=1,
         episode_number=1,
     )
     movie_job = GatewayJob("path-test-movie", movie_release, "queued", 0, 0, 0)
     episode_job = GatewayJob("path-test-episode", episode_release, "queued", 0, 0, 0)
     movie = MovieWanted(0, "Inception", 2010, 27205, None)
-    episode = EpisodeWanted(0, 0, "One Piece", "", 1999, 37854, None, None, 1, 1)
+    episode = EpisodeWanted(
+        sonarr_episode_id=0,
+        series_id=0,
+        series_title="One Piece",
+        episode_title="",
+        year=1999,
+        tmdb_id=37854,
+        tvdb_id=81797,
+        tvdb_episode_id=None,
+        imdb_id=None,
+        season_number=1,
+        episode_number=1,
+    )
 
     warnings: list[str] = []
     if settings.movie_strm_root.rstrip("/") == settings.series_strm_root.rstrip("/"):
