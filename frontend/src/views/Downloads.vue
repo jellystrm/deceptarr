@@ -73,9 +73,9 @@
             <span>{{ group.count }} tasks</span>
             <span :class="['pill', statusPill(group.status)]">{{ group.status }}</span>
             <span v-if="group.avgPct !== null" style="font-family:var(--font-mono);font-size:11px;">{{ group.avgPct }}%</span>
-            <button v-if="canPauseAny(groupJobs(group))" class="row-action" title="Pause all media tasks" @click.stop="pauseJobs(group.jobIds)">Pause all</button>
-            <button v-else-if="canResumeAny(groupJobs(group))" class="row-action" title="Resume all media tasks" @click.stop="resumeJobs(group.jobIds)">Resume all</button>
-            <button class="row-action danger" title="Remove all media tasks" @click.stop="removeJobs(group.jobIds)">Remove all</button>
+            <button v-if="canPauseAny(groupJobs(group))" class="row-action" title="Pause all media tasks" @click.stop="pauseJobs(group.jobIds)"><PauseIcon /></button>
+            <button v-else-if="canResumeAny(groupJobs(group))" class="row-action" title="Resume all media tasks" @click.stop="resumeJobs(group.jobIds)"><PlayIcon /></button>
+            <button class="row-action danger" title="Remove all media tasks" @click.stop="removeJobs(group.jobIds)"><TrashIcon /></button>
             <button class="icon-mini" :title="collapsedPkgs.has(group.key) ? 'Expand' : 'Collapse'" @click.stop="togglePkg(group.key)">
               <svg class="pkg-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                 <polyline points="6 9 12 15 18 9"/>
@@ -112,9 +112,9 @@
                 {{ pct(job) }}%
               </div>
               <span class="leaf-actions">
-                <button v-if="canPause(job)" class="row-action" title="Pause" @click="act('pause', job.id)">Pause</button>
-                <button v-else-if="canResume(job)" class="row-action" title="Resume" @click="act('resume', job.id)">Resume</button>
-                <button class="row-action danger" title="Remove" @click="removeJobs([job.id])">Remove</button>
+                <button v-if="canPause(job)" class="row-action" title="Pause" @click="act('pause', job.id)"><PauseIcon /></button>
+                <button v-else-if="canResume(job)" class="row-action" title="Resume" @click="act('resume', job.id)"><PlayIcon /></button>
+                <button class="row-action danger" title="Remove" @click="removeJobs([job.id])"><TrashIcon /></button>
               </span>
             </div>
           </template>
@@ -130,9 +130,9 @@
                 <span class="label">{{ season.label }}</span>
                 <div class="meta">
                   <span>{{ season.count }} tasks</span>
-                  <button v-if="canPauseAny(seasonJobs(season))" class="row-action" title="Pause season tasks" @click.stop="pauseJobs(season.jobIds)">Pause all</button>
-                  <button v-else-if="canResumeAny(seasonJobs(season))" class="row-action" title="Resume season tasks" @click.stop="resumeJobs(season.jobIds)">Resume all</button>
-                  <button class="row-action danger" title="Remove season tasks" @click.stop="removeJobs(season.jobIds)">Remove all</button>
+                  <button v-if="canPauseAny(seasonJobs(season))" class="row-action" title="Pause season tasks" @click.stop="pauseJobs(season.jobIds)"><PauseIcon /></button>
+                  <button v-else-if="canResumeAny(seasonJobs(season))" class="row-action" title="Resume season tasks" @click.stop="resumeJobs(season.jobIds)"><PlayIcon /></button>
+                  <button class="row-action danger" title="Remove season tasks" @click.stop="removeJobs(season.jobIds)"><TrashIcon /></button>
                   <button class="icon-mini" :title="collapsedSeasons.has(season.key) ? 'Expand' : 'Collapse'" @click.stop="toggleSeason(season.key)">
                     <svg class="tree-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                       <polyline points="6 9 12 15 18 9"/>
@@ -151,9 +151,9 @@
                     <div class="meta">
                       <span :class="['pill', statusPill(episode.status)]">{{ episode.status }}</span>
                       <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-3)">{{ episode.progress }}%</span>
-                      <button v-if="canPauseAny(episode.jobs)" class="row-action" title="Pause episode tasks" @click.stop="pauseJobs(episode.jobIds)">Pause all</button>
-                      <button v-else-if="canResumeAny(episode.jobs)" class="row-action" title="Resume episode tasks" @click.stop="resumeJobs(episode.jobIds)">Resume all</button>
-                      <button class="row-action danger" title="Remove episode tasks" @click.stop="removeJobs(episode.jobIds)">Remove all</button>
+                      <button v-if="canPauseAny(episode.jobs)" class="row-action" title="Pause episode tasks" @click.stop="pauseJobs(episode.jobIds)"><PauseIcon /></button>
+                      <button v-else-if="canResumeAny(episode.jobs)" class="row-action" title="Resume episode tasks" @click.stop="resumeJobs(episode.jobIds)"><PlayIcon /></button>
+                      <button class="row-action danger" title="Remove episode tasks" @click.stop="removeJobs(episode.jobIds)"><TrashIcon /></button>
                       <button class="icon-mini" :title="collapsedEpisodes.has(episode.key) ? 'Expand' : 'Collapse'" @click.stop="toggleEpisode(episode.key)">
                         <svg class="tree-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                           <polyline points="6 9 12 15 18 9"/>
@@ -180,9 +180,9 @@
                         {{ pct(job) }}%
                       </div>
                       <span class="leaf-actions">
-                        <button v-if="canPause(job)" class="row-action" title="Pause" @click="act('pause', job.id)">Pause</button>
-                        <button v-else-if="canResume(job)" class="row-action" title="Resume" @click="act('resume', job.id)">Resume</button>
-                        <button class="row-action danger" title="Remove" @click="removeJobs([job.id])">Remove</button>
+                        <button v-if="canPause(job)" class="row-action" title="Pause" @click="act('pause', job.id)"><PauseIcon /></button>
+                        <button v-else-if="canResume(job)" class="row-action" title="Resume" @click="act('resume', job.id)"><PlayIcon /></button>
+                        <button class="row-action danger" title="Remove" @click="removeJobs([job.id])"><TrashIcon /></button>
                       </span>
                     </div>
                   </div>
@@ -204,8 +204,35 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onUnmounted, ref } from 'vue'
+import { computed, h, onMounted, onUnmounted, ref } from 'vue'
 import { getPipeline, jobAction, bulkAction, type PipelineJob } from '../api'
+
+const iconBase = {
+  viewBox: '0 0 24 24',
+  fill: 'none',
+  stroke: 'currentColor',
+  'stroke-width': '2.2',
+  'stroke-linecap': 'round',
+  'stroke-linejoin': 'round',
+  'aria-hidden': 'true',
+}
+
+const PlayIcon = () => h('svg', { ...iconBase, fill: 'currentColor', stroke: 'none' }, [
+  h('polygon', { points: '7 5 19 12 7 19' }),
+])
+
+const PauseIcon = () => h('svg', iconBase, [
+  h('rect', { x: '7', y: '5', width: '3.5', height: '14', rx: '1' }),
+  h('rect', { x: '13.5', y: '5', width: '3.5', height: '14', rx: '1' }),
+])
+
+const TrashIcon = () => h('svg', iconBase, [
+  h('path', { d: 'M3 6h18' }),
+  h('path', { d: 'M8 6V4h8v2' }),
+  h('path', { d: 'M19 6l-1 14H6L5 6' }),
+  h('path', { d: 'M10 11v5' }),
+  h('path', { d: 'M14 11v5' }),
+])
 
 // ── Interfaces ────────────────────────────────────────────────────────────────
 
@@ -532,15 +559,22 @@ onUnmounted(() => clearInterval(timer))
 
 .row-action {
   height: 28px;
-  padding: 0 10px;
+  width: 30px;
+  padding: 0;
   border-radius: 7px;
   border: 1px solid var(--border-2);
   background: var(--surface-2);
   color: var(--text);
-  font: 600 12px/1 var(--font-sans);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  white-space: nowrap;
   transition: border-color .12s, background .12s, color .12s;
+}
+.row-action svg {
+  width: 14px;
+  height: 14px;
+  flex-shrink: 0;
 }
 .row-action:hover {
   border-color: var(--blue-line);
