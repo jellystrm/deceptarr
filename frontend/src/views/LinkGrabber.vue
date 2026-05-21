@@ -140,7 +140,6 @@
               <div class="tree-children">
                 <template v-for="episode in season.episodes" :key="episode.key">
                   <div
-                    v-if="!isSeasonPack(episode)"
                     class="tree-row episode"
                     :class="{ collapsed: collapsedSrvs.has(episode.key) }"
                     @click="toggleSrv(episode.key)"
@@ -154,14 +153,13 @@
                     </div>
                   </div>
                   <div class="tree-children">
-                    <div class="lg-thead-srv flat-grid" :class="{ 'in-episode': !isSeasonPack(episode) }">
+                    <div class="lg-thead-srv flat-grid in-episode">
                       <span>Server</span><span>Variant</span><span>File</span><span>Download type</span><span>Status</span>
                     </div>
                     <div
                       v-for="row in episodeVariantRows(episode)"
                       :key="row.variant.key"
-                      class="lg-variant flat-row flat-grid"
-                      :class="{ 'in-episode': !isSeasonPack(episode) }"
+                      class="lg-variant flat-row flat-grid in-episode"
                     >
                       <span class="srv-name flat">{{ row.source }}</span>
                       <span class="var-dub">
@@ -499,10 +497,6 @@ function groupVariantRows(group: MediaNode): VariantRow[] {
 
 function episodeVariantRows(episode: EpisodeNode): VariantRow[] {
   return episode.servers.flatMap(serverVariantRows)
-}
-
-function isSeasonPack(episode: EpisodeNode): boolean {
-  return episode.label === 'Season pack'
 }
 
 function serverVariantRows(srv: ServerNode): VariantRow[] {
