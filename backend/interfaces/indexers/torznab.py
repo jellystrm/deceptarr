@@ -197,8 +197,8 @@ def search_response(settings: Settings, query: dict[str, list[str]]) -> str:
                 url=query_url,
                 grabs=result_grabs,
             )
-            # Auto-grab: immediately enqueue best match if enabled and results found
-            if settings.auto_grab and result_grabs:
+            # Auto-grab: immediately enqueue best match if any source has auto_download
+            if result_grabs and any(settings.source_auto_download.get(s) for s in settings.source_order):
                 threading.Thread(
                     target=_auto_enqueue_best,
                     args=(settings, result_grabs),
@@ -223,62 +223,67 @@ _auto_log = _logging.getLogger(__name__ + ".auto_grab")
 
 
 def _auto_enqueue_best(settings: Settings, grabs: list[dict]) -> None:
-    """Select the highest-priority grab token and enqueue it immediately.
+    """Auto-grab the best match, but ONLY when there is a 100% match.
 
-    Selection order:
-      1. Iterate sources in ``settings.source_order`` (user-defined priority).
-      2. Within each source, prefer variants in ``settings.source_variant_priority[source]``
-         (e.g. Vietsub → Lồng tiếng → Thuyết minh).
-      3. Among matching variants, prefer the configured ``default_output_mode``
-         (strm / download); fall back to any mode if not found.
+    Rules:
+      - Each source can independently opt-in via ``source_auto_download[source] = True``.
+      - Global ``auto_grab`` flag is ignored here; per-source flag controls everything.
+      - "100% match" means the grab's ``server`` label exactly equals the #1 variant
+        in that source's ``source_variant_priority`` (case-insensitive).
+      - If a source has no server label (empty string), it matches any top variant.
+      - No fallback to lower-priority variants: either the top variant is available
+        or we skip — letting the user decide manually in the Indexer.
+      - Among exact matches, prefer the configured ``default_output_mode``.
     """
     preferred_mode = settings.default_output_mode
-
-    best_token: str | None = None
+    auto_dl = settings.source_auto_download   # dict[str, bool]
 
     for source_name in settings.source_order:
+        if not auto_dl.get(source_name, False):
+            continue  # this source doesn't want auto-download
+
         variant_order = (
             settings.source_variant_priority.get(source_name)
             or _DEFAULT_VARIANTS
         )
+        top_variant = variant_order[0].strip().lower() if variant_order else ""
 
         source_grabs = [g for g in grabs if g.get("source") == source_name]
         if not source_grabs:
             continue
 
-        # Prefer configured output mode; fall back to all grabs from this source
-        mode_grabs = [g for g in source_grabs if g.get("output_mode") == preferred_mode]
-        candidates = mode_grabs if mode_grabs else source_grabs
+        # Filter: only grabs whose server exactly matches the top variant
+        # (or server is empty — source doesn't distinguish variants)
+        exact = [
+            g for g in source_grabs
+            if (g.get("server") or "").strip().lower() in ("", top_variant)
+        ]
+        if not exact:
+            _auto_log.debug(
+                "auto_grab: source=%s has grabs but none match top variant %r — skipping",
+                source_name, top_variant,
+            )
+            continue  # 100% match not satisfied → skip, no fallback
 
-        found: dict | None = None
-        for preferred_variant in variant_order:
-            for grab in candidates:
-                server = (grab.get("server") or "").strip()
-                # Empty server means source doesn't label its variants — accept it
-                if not server or server.lower() == preferred_variant.lower():
-                    found = grab
-                    break
-            if found:
-                break
+        # Prefer the configured output mode
+        mode_match = [g for g in exact if g.get("output_mode") == preferred_mode]
+        chosen = (mode_match or exact)[0]
+        token = chosen.get("token")
+        if not token:
+            continue
 
-        # No variant match — just take the first candidate from this source
-        if found is None and candidates:
-            found = candidates[0]
+        try:
+            grab_url = f"{settings.public_base_url}/grab/{token}"
+            enqueue_from_url(settings, grab_url)
+            _auto_log.info(
+                "auto_grab: enqueued source=%s variant=%r mode=%s token=%s…",
+                source_name, top_variant, preferred_mode, token[:32],
+            )
+        except Exception:
+            _auto_log.exception("auto_grab: enqueue failed source=%s", source_name)
+        return  # first auto-enabled source with a 100% match wins
 
-        if found:
-            best_token = found.get("token")
-            break
-
-    if not best_token:
-        _auto_log.debug("auto_grab: no suitable token found in %d grabs", len(grabs))
-        return
-
-    try:
-        grab_url = f"{settings.public_base_url}/grab/{best_token}"
-        enqueue_from_url(settings, grab_url)
-        _auto_log.info("auto_grab: enqueued token %s…", best_token[:32])
-    except Exception:
-        _auto_log.exception("auto_grab: enqueue failed")
+    _auto_log.debug("auto_grab: no 100%% match found in %d grabs", len(grabs))
 
 
 def build_releases(settings: Settings, query: dict[str, list[str]]) -> list[GatewayRelease]:

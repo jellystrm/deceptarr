@@ -295,8 +295,9 @@ class Settings:
     job_detail_retention_hours: int = 24
     torznab_group_sources: bool = False
     source_order: list[str] = field(default_factory=lambda: ["kkphim", "ophim", "nguonc"])
-    source_variant_priority: dict = field(default_factory=dict)  # {"kkphim": ["Vietsub", ...], ...}
-    auto_grab: bool = False  # auto-enqueue best match immediately on Torznab search
+    source_variant_priority: dict = field(default_factory=dict)   # {"kkphim": ["Vietsub", ...], ...}
+    source_auto_download: dict = field(default_factory=dict)       # {"kkphim": True, ...}
+    auto_grab: bool = False  # global fallback; individual source_auto_download takes precedence
 
     def resolve_ffmpeg(self) -> str:
         """Return the ffmpeg binary path, auto-detecting if not yet resolved."""
@@ -390,7 +391,7 @@ class Settings:
         if not source_order:
             source_order = ["kkphim", "ophim", "nguonc"]
 
-        # ── source_variant_priority: per-source dub ordering ──────────────────
+        # ── source_variant_priority + source_auto_download ────────────────────
         _DEFAULT_VARIANTS = ["Vietsub", "Lồng tiếng", "Thuyết minh"]
         _raw_svp = _file_value(file_data, "source_variant_priority", {})
         source_variant_priority: dict = {}
@@ -401,6 +402,12 @@ class Settings:
                     source_variant_priority[_src] = [str(v) for v in _order]
                 else:
                     source_variant_priority[_src] = list(_DEFAULT_VARIANTS)
+
+        _raw_sad = _file_value(file_data, "source_auto_download", {})
+        source_auto_download: dict = {}
+        if isinstance(_raw_sad, dict):
+            for _src in builtin_source_names:
+                source_auto_download[_src] = bool(_raw_sad.get(_src, False))
 
         # ── Storage paths: config file → auto-detect from Arr → fallback ──────
         # Only detected (non-fallback) values are persisted; fallbacks are not
@@ -487,6 +494,7 @@ class Settings:
             torznab_group_sources=bool(_file_value(file_data, "torznab_group_sources", False)),
             source_order=source_order,
             source_variant_priority=source_variant_priority,
+            source_auto_download=source_auto_download,
             auto_grab=bool(_file_value(file_data, "auto_grab", False)),
         )
 
@@ -544,6 +552,7 @@ class Settings:
             "torznab_group_sources": self.torznab_group_sources,
             "source_order": self.source_order,
             "source_variant_priority": self.source_variant_priority,
+            "source_auto_download": self.source_auto_download,
             "auto_grab": self.auto_grab,
         }
 

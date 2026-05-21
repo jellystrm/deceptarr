@@ -172,6 +172,22 @@ def form_to_config(form: dict[str, str], current: Settings) -> dict[str, Any]:
                 pass
         else:
             data["source_variant_priority"] = current.source_variant_priority
+
+        # per-source auto-download flags
+        sad_raw = form.get("source_auto_download_json", "").strip()
+        if sad_raw:
+            try:
+                sad = _json.loads(sad_raw)
+                if isinstance(sad, dict):
+                    data["source_auto_download"] = {
+                        k: bool(v)
+                        for k, v in sad.items()
+                        if k in builtin_source_names
+                    }
+            except Exception:
+                pass
+        else:
+            data["source_auto_download"] = current.source_auto_download
         return data
 
     if section == "tasks":
