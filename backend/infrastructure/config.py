@@ -295,6 +295,7 @@ class Settings:
     job_detail_retention_hours: int = 24
     torznab_group_sources: bool = False
     source_order: list[str] = field(default_factory=lambda: ["kkphim", "ophim", "nguonc"])
+    source_variant_priority: dict = field(default_factory=dict)  # {"kkphim": ["Vietsub", ...], ...}
 
     def resolve_ffmpeg(self) -> str:
         """Return the ffmpeg binary path, auto-detecting if not yet resolved."""
@@ -388,6 +389,18 @@ class Settings:
         if not source_order:
             source_order = ["kkphim", "ophim", "nguonc"]
 
+        # ── source_variant_priority: per-source dub ordering ──────────────────
+        _DEFAULT_VARIANTS = ["Vietsub", "Lồng tiếng", "Thuyết minh"]
+        _raw_svp = _file_value(file_data, "source_variant_priority", {})
+        source_variant_priority: dict = {}
+        if isinstance(_raw_svp, dict):
+            for _src in builtin_source_names:
+                _order = _raw_svp.get(_src)
+                if isinstance(_order, list) and _order:
+                    source_variant_priority[_src] = [str(v) for v in _order]
+                else:
+                    source_variant_priority[_src] = list(_DEFAULT_VARIANTS)
+
         # ── Storage paths: config file → auto-detect from Arr → fallback ──────
         # Only detected (non-fallback) values are persisted; fallbacks are not
         # written so the next start retries detection when Arr becomes available.
@@ -472,6 +485,7 @@ class Settings:
             job_detail_retention_hours=int(_file_value(file_data, "job_detail_retention_hours", 24)),
             torznab_group_sources=bool(_file_value(file_data, "torznab_group_sources", False)),
             source_order=source_order,
+            source_variant_priority=source_variant_priority,
         )
 
         # Persist any auto-detected / auto-generated values so the next start
@@ -527,6 +541,7 @@ class Settings:
             "job_detail_retention_hours": self.job_detail_retention_hours,
             "torznab_group_sources": self.torznab_group_sources,
             "source_order": self.source_order,
+            "source_variant_priority": self.source_variant_priority,
         }
 
 

@@ -107,7 +107,7 @@
               <span class="srv-name flat">{{ row.source }}</span>
               <span class="var-dub">
                 {{ variantLabel(row) }}
-                <span v-if="row.primary" class="pill teal flat">Primary</span>
+                <span v-if="row.primary" class="primary-dot" title="Primary"></span>
               </span>
               <span class="var-file">{{ variantFilename(group, row.variant) }}</span>
               <span class="var-types">
@@ -166,7 +166,7 @@
                       <span class="srv-name flat">{{ row.source }}</span>
                       <span class="var-dub">
                         {{ variantLabel(row) }}
-                        <span v-if="row.primary" class="pill teal flat">Primary</span>
+                        <span v-if="row.primary" class="primary-dot" title="Primary"></span>
                       </span>
                       <span class="var-file">{{ variantFilename(group, row.variant) }}</span>
                       <span class="var-types">
@@ -581,6 +581,11 @@ onUnmounted(() => clearInterval(timer))
 </script>
 
 <style scoped>
+.primary-dot {
+  display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--teal); flex-shrink: 0;
+  box-shadow: 0 0 0 2px rgba(94,224,189,.15), 0 0 5px rgba(94,224,189,.35);
+}
 .pkg-nomatch {
   padding: 11px 18px;
   font-size: 12.5px; color: var(--text-3); font-family: var(--font-mono);

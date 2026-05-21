@@ -128,12 +128,12 @@ def form_to_config(form: dict[str, str], current: Settings) -> dict[str, Any]:
         return data
 
     if section == "sources":
+        import json as _json
         parsed_source_order: list[str] = []
         order_raw = form.get("source_order_json", "").strip()
         if order_raw:
             try:
-                import json
-                order_list = json.loads(order_raw)
+                order_list = _json.loads(order_raw)
                 parsed_source_order = [
                     str(n).strip()
                     for n in order_list
@@ -141,7 +141,25 @@ def form_to_config(form: dict[str, str], current: Settings) -> dict[str, Any]:
                 ]
             except Exception:
                 pass
+        if not parsed_source_order:
+            parsed_source_order = list(current.source_order)
         data["source_order"] = parsed_source_order
+
+        # per-source variant priority
+        svp_raw = form.get("source_variant_priority_json", "").strip()
+        if svp_raw:
+            try:
+                svp = _json.loads(svp_raw)
+                if isinstance(svp, dict):
+                    data["source_variant_priority"] = {
+                        k: [str(v) for v in vals]
+                        for k, vals in svp.items()
+                        if k in builtin_source_names and isinstance(vals, list)
+                    }
+            except Exception:
+                pass
+        else:
+            data["source_variant_priority"] = current.source_variant_priority
         return data
 
     if section == "tasks":
