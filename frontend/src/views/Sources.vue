@@ -79,40 +79,51 @@
           </div>
         </div>
 
-        <!-- Variant priority + auto-download -->
-        <div class="src-config">
-          <!-- Variant chips (horizontal) -->
-          <div class="var-row">
-            <span class="var-row-label">Variant priority</span>
-            <div class="var-chips">
-              <div
-                v-for="(variant, vi) in variantPriority[src]"
-                :key="variant"
-                class="var-chip"
-              >
-                <span class="var-rank">{{ vi + 1 }}</span>
-                <span class="var-name">{{ variant }}</span>
-                <button class="var-mv" title="← Higher priority" :disabled="vi === 0" @click="moveVariantLeft(src, vi)">
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
+        <!-- Variant config section -->
+        <div class="src-variants">
+          <div
+            v-for="(variant, vi) in variantConfig[src]"
+            :key="variant.name"
+            class="variant-card"
+          >
+            <!-- Variant header -->
+            <div class="variant-hd">
+              <span class="variant-rank">{{ vi + 1 }}</span>
+              <span class="variant-name">{{ variant.name }}</span>
+              <div class="variant-mv-btns">
+                <button class="icon-mini xs" title="Move left" :disabled="vi === 0" @click="moveVariantUp(src, vi)">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
                 </button>
-                <button class="var-mv" title="→ Lower priority" :disabled="vi >= variantPriority[src].length - 1" @click="moveVariantRight(src, vi)">
-                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+                <button class="icon-mini xs" title="Move right" :disabled="vi >= variantConfig[src].length - 1" @click="moveVariantDown(src, vi)">
+                  <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
                 </button>
               </div>
             </div>
-          </div>
 
-          <!-- Auto-download toggle -->
-          <div class="auto-dl-row">
-            <label class="check">
-              <input type="checkbox" v-model="autoDownload[src]" />
-              <span class="check-box"></span>
-              <span>Auto-download</span>
-            </label>
-            <span v-if="autoDownload[src]" class="auto-hint">
-              grabs <b>{{ variantPriority[src]?.[0] }}</b> automatically when found
-            </span>
-            <span v-else class="auto-hint muted">manual only</span>
+            <!-- Type rows — ordered, reorderable -->
+            <div class="type-rows">
+              <div
+                v-for="(te, ti) in variant.types"
+                :key="te.key"
+                class="type-row"
+                :class="{ 'type-enabled': te.auto_download }"
+              >
+                <label class="check type-check">
+                  <input type="checkbox" v-model="te.auto_download" />
+                  <span class="check-box"></span>
+                  <span class="check-lbl">Auto download</span>
+                </label>
+                <span class="type-badge" :class="te.key">{{ te.key === 'strm' ? 'STRM' : 'HLS-DL' }}</span>
+                <div class="type-mv-btns">
+                  <button class="icon-mini xs" title="Higher priority" :disabled="ti === 0" @click="moveTypeUp(src, vi, ti)">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>
+                  </button>
+                  <button class="icon-mini xs" title="Lower priority" :disabled="ti >= variant.types.length - 1" @click="moveTypeDown(src, vi, ti)">
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+                  </button>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -124,6 +135,10 @@
 import { ref, computed, onMounted } from 'vue'
 import { onBeforeRouteLeave } from 'vue-router'
 import { getConfig, saveSettings } from '../api'
+
+type TypeKey = 'strm' | 'hls_dl'
+interface TypeEntry    { key: TypeKey; auto_download: boolean }
+interface VariantConfig { name: string; types: TypeEntry[] }
 
 const BUILTINS = ['kkphim', 'ophim', 'nguonc']
 const BUILTIN_URLS: Record<string, string> = {
@@ -141,11 +156,50 @@ const SRC_INITIALS: Record<string, string> = {
   ophim:  'OP',
   nguonc: 'NC',
 }
-const DEFAULT_VARIANTS = ['Vietsub', 'Lồng tiếng', 'Thuyết minh']
+const DEFAULT_VARIANT_NAMES = ['Vietsub', 'Lồng tiếng', 'Thuyết minh']
 
-const order           = ref<string[]>([])
-const variantPriority = ref<Record<string, string[]>>({})
-const autoDownload    = ref<Record<string, boolean>>({})
+function defaultTypes(): TypeEntry[] {
+  return [
+    { key: 'strm',   auto_download: false },
+    { key: 'hls_dl', auto_download: false },
+  ]
+}
+function defaultVariant(name: string): VariantConfig {
+  return { name, types: defaultTypes() }
+}
+function defaultVariants(): VariantConfig[] {
+  return DEFAULT_VARIANT_NAMES.map(defaultVariant)
+}
+
+/** Convert UI VariantConfig to backend format (priority = position index) */
+function toBackendVariant(v: VariantConfig): Record<string, unknown> {
+  const result: Record<string, unknown> = { name: v.name }
+  v.types.forEach((t, i) => {
+    result[t.key] = { auto_download: t.auto_download, priority: i + 1 }
+  })
+  return result
+}
+
+/** Parse backend variant object into UI VariantConfig (sort by priority) */
+function fromBackendVariant(raw: Record<string, unknown>): VariantConfig {
+  const entries: Array<{ key: TypeKey; auto_download: boolean; priority: number }> = []
+  for (const key of ['strm', 'hls_dl'] as TypeKey[]) {
+    const tc = ((raw[key] ?? {}) as Record<string, unknown>)
+    entries.push({
+      key,
+      auto_download: Boolean(tc.auto_download),
+      priority: Number(tc.priority) || 99,
+    })
+  }
+  entries.sort((a, b) => a.priority - b.priority)
+  return {
+    name: String(raw.name || ''),
+    types: entries.map(e => ({ key: e.key, auto_download: e.auto_download })),
+  }
+}
+
+const order         = ref<string[]>([])
+const variantConfig = ref<Record<string, VariantConfig[]>>({})
 const saving    = ref(false)
 const saved     = ref(false)
 const saveError = ref('')
@@ -153,7 +207,7 @@ const saveError = ref('')
 // ── Dirty tracking ────────────────────────────────────────────────────────────
 const originalState = ref('')
 function stateSnapshot() {
-  return JSON.stringify({ order: order.value, vp: variantPriority.value, ad: autoDownload.value })
+  return JSON.stringify({ order: order.value, vc: variantConfig.value })
 }
 const isDirty = computed(() => stateSnapshot() !== originalState.value)
 
@@ -222,34 +276,61 @@ function moveDown(i: number) {
   order.value = arr
 }
 
-// ── Variant reorder (horizontal ← →) ─────────────────────────────────────────
-function moveVariantLeft(src: string, i: number) {
-  if (i === 0) return
-  const arr = [...variantPriority.value[src]]
-  ;[arr[i - 1], arr[i]] = [arr[i], arr[i - 1]]
-  variantPriority.value = { ...variantPriority.value, [src]: arr }
+// ── Variant reorder ───────────────────────────────────────────────────────────
+function moveVariantUp(src: string, vi: number) {
+  if (vi === 0) return
+  const arr = [...variantConfig.value[src]];
+  [arr[vi - 1], arr[vi]] = [arr[vi], arr[vi - 1]]
+  variantConfig.value = { ...variantConfig.value, [src]: arr }
 }
-function moveVariantRight(src: string, i: number) {
-  const arr = variantPriority.value[src] || []
-  if (i >= arr.length - 1) return
-  const narr = [...arr]
-  ;[narr[i], narr[i + 1]] = [narr[i + 1], narr[i]]
-  variantPriority.value = { ...variantPriority.value, [src]: narr }
+function moveVariantDown(src: string, vi: number) {
+  const arr = variantConfig.value[src] || []
+  if (vi >= arr.length - 1) return
+  const narr = [...arr];
+  [narr[vi], narr[vi + 1]] = [narr[vi + 1], narr[vi]]
+  variantConfig.value = { ...variantConfig.value, [src]: narr }
 }
 
-// ── Save all ──────────────────────────────────────────────────────────────────
+// ── Type reorder within a variant ─────────────────────────────────────────────
+function moveTypeUp(src: string, vi: number, ti: number) {
+  if (ti === 0) return
+  const variants = variantConfig.value[src].map((v, idx) => {
+    if (idx !== vi) return v
+    const types = [...v.types];
+    [types[ti - 1], types[ti]] = [types[ti], types[ti - 1]]
+    return { ...v, types }
+  })
+  variantConfig.value = { ...variantConfig.value, [src]: variants }
+}
+function moveTypeDown(src: string, vi: number, ti: number) {
+  const variant = variantConfig.value[src]?.[vi]
+  if (!variant || ti >= variant.types.length - 1) return
+  const variants = variantConfig.value[src].map((v, idx) => {
+    if (idx !== vi) return v
+    const types = [...v.types];
+    [types[ti], types[ti + 1]] = [types[ti + 1], types[ti]]
+    return { ...v, types }
+  })
+  variantConfig.value = { ...variantConfig.value, [src]: variants }
+}
+
+// ── Save ──────────────────────────────────────────────────────────────────────
 async function save() {
   saving.value = true
   saveError.value = ''
   saved.value = false
   try {
+    // Convert UI model → backend format
+    const backendSvc: Record<string, unknown[]> = {}
+    for (const src of BUILTINS) {
+      backendSvc[src] = (variantConfig.value[src] || []).map(toBackendVariant)
+    }
     await saveSettings({
       _section: 'sources',
       source_order_json: JSON.stringify(order.value),
-      source_variant_priority_json: JSON.stringify(variantPriority.value),
-      source_auto_download_json: JSON.stringify(autoDownload.value),
+      source_variant_config_json: JSON.stringify(backendSvc),
     })
-    originalState.value = stateSnapshot()   // mark as clean
+    originalState.value = stateSnapshot()
     saved.value = true
     setTimeout(() => { saved.value = false }, 2500)
   } catch (e: unknown) {
@@ -259,6 +340,7 @@ async function save() {
   }
 }
 
+// ── Load ──────────────────────────────────────────────────────────────────────
 async function loadConfig() {
   try {
     const cfg = await getConfig()
@@ -269,30 +351,25 @@ async function loadConfig() {
     const missing = BUILTINS.filter(b => !savedOrder.includes(b))
     order.value = [...savedOrder, ...missing]
 
-    // variant priority
-    const rawVP = (cfg.source_variant_priority as Record<string, string[]> | undefined) || {}
-    const vp: Record<string, string[]> = {}
+    // variant config
+    const rawSvc = (cfg.source_variant_config as Record<string, unknown[]> | undefined) || {}
+    const vc: Record<string, VariantConfig[]> = {}
     for (const src of BUILTINS) {
-      const s = rawVP[src]
-      vp[src] = Array.isArray(s) && s.length ? s : [...DEFAULT_VARIANTS]
+      const raw = rawSvc[src]
+      if (Array.isArray(raw) && raw.length) {
+        vc[src] = raw.map(v => fromBackendVariant(v as Record<string, unknown>))
+      } else {
+        vc[src] = defaultVariants()
+      }
     }
-    variantPriority.value = vp
+    variantConfig.value = vc
 
-    // auto-download flags
-    const rawAD = (cfg.source_auto_download as Record<string, boolean> | undefined) || {}
-    const ad: Record<string, boolean> = {}
-    for (const src of BUILTINS) ad[src] = Boolean(rawAD[src])
-    autoDownload.value = ad
-
-    // take clean snapshot
     originalState.value = stateSnapshot()
   } catch {
     order.value = [...BUILTINS]
-    const vp: Record<string, string[]> = {}
-    const ad: Record<string, boolean> = {}
-    for (const src of BUILTINS) { vp[src] = [...DEFAULT_VARIANTS]; ad[src] = false }
-    variantPriority.value = vp
-    autoDownload.value = ad
+    const vc: Record<string, VariantConfig[]> = {}
+    for (const src of BUILTINS) vc[src] = defaultVariants()
+    variantConfig.value = vc
     originalState.value = stateSnapshot()
   }
 }
@@ -301,16 +378,17 @@ onMounted(loadConfig)
 </script>
 
 <style scoped>
-.src-list { display: flex; flex-direction: column; gap: 10px; }
+.src-list { display: flex; flex-direction: column; gap: 10px; align-items: flex-start; }
 
 .src-row {
+  width: fit-content; min-width: 480px;
   background: var(--surface); border: 1px solid var(--border);
   border-radius: var(--radius-lg); overflow: hidden; transition: border-color .12s;
 }
 .src-row:hover { border-color: var(--border-2); }
 .src-row.drag-over { border-color: var(--teal); box-shadow: 0 0 0 2px rgba(94,224,189,.15); }
 
-/* Header */
+/* Source header */
 .src-hd {
   display: flex; align-items: center; gap: 14px;
   padding: 14px 16px; cursor: grab;
@@ -331,44 +409,57 @@ onMounted(loadConfig)
 }
 .pill.xs { padding: 2px 7px; font-size: 10.5px; }
 
-/* Config row (variants + auto-dl) */
-.src-config {
+/* Variant section */
+.src-variants {
   border-top: 1px solid var(--border); background: var(--bg-2);
-  padding: 12px 16px 12px 52px;
-  display: flex; flex-direction: column; gap: 10px;
+  padding: 14px 16px;
+  display: flex; gap: 10px; flex-wrap: wrap;
 }
 
-/* Horizontal variant chips */
-.var-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
-.var-row-label {
-  font: 600 11px/1 var(--font-mono); letter-spacing: .07em; text-transform: uppercase;
-  color: var(--text-3); white-space: nowrap; flex-shrink: 0;
-}
-.var-chips { display: flex; gap: 6px; flex-wrap: wrap; }
-
-.var-chip {
-  display: inline-flex; align-items: center; gap: 4px;
-  padding: 4px 8px 4px 6px;
+/* Variant card */
+.variant-card {
+  flex: 1; min-width: 260px; max-width: 380px;
   background: var(--surface); border: 1px solid var(--border);
-  border-radius: 6px; font-size: 12.5px;
+  border-radius: 10px; overflow: hidden;
 }
-.var-rank {
-  font-family: var(--font-mono); font-size: 10px; color: var(--text-3);
-  min-width: 10px; text-align: center;
-}
-.var-name { font-weight: 500; color: var(--text); }
-.var-mv {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 18px; height: 18px; border-radius: 4px; border: none;
-  background: transparent; color: var(--text-3); cursor: pointer;
-  transition: background .1s, color .1s; padding: 0;
-}
-.var-mv:hover:not(:disabled) { background: var(--surface-2); color: var(--text); }
-.var-mv:disabled { opacity: .25; cursor: default; }
 
-/* Auto-download row */
-.auto-dl-row { display: flex; align-items: center; gap: 10px; }
-.auto-hint { font-size: 12px; color: var(--text-3); }
-.auto-hint b { color: var(--teal); font-weight: 600; }
-.auto-hint.muted { color: var(--muted, var(--text-3)); opacity: .6; }
+.variant-hd {
+  display: flex; align-items: center; gap: 8px;
+  padding: 7px 10px;
+  background: var(--surface2); border-bottom: 1px solid var(--border);
+}
+.variant-rank {
+  font-family: var(--font-mono); font-size: 10px; color: var(--text-3);
+  width: 14px; text-align: center; flex-shrink: 0;
+}
+.variant-name { font-weight: 600; font-size: 13px; flex: 1; }
+.variant-mv-btns { display: flex; gap: 3px; }
+.icon-mini.xs { width: 20px; height: 20px; }
+
+/* Type rows */
+.type-rows { display: flex; flex-direction: column; }
+
+.type-row {
+  display: flex; align-items: center; gap: 9px;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border);
+  transition: background .1s;
+}
+.type-row:last-child { border-bottom: none; }
+.type-row.type-enabled { background: rgba(94,224,189,.04); }
+
+.type-badge {
+  display: inline-block; flex-shrink: 0;
+  width: 56px; text-align: center;
+  padding: 2px 0; border-radius: 5px;
+  font: 600 10.5px/1.4 var(--font-mono); letter-spacing: .04em;
+  white-space: nowrap;
+}
+.type-badge.strm   { background: rgba(94,224,189,.12); color: var(--teal); }
+.type-badge.hls_dl { background: rgba(245,166,35,.12);  color: var(--accent); }
+
+.type-check { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.check-lbl  { font-size: 12px; color: var(--text); }
+
+.type-mv-btns { display: flex; gap: 2px; margin-left: auto; }
 </style>

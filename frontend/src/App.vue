@@ -38,13 +38,6 @@
           <span v-if="activeJobsCount > 0" class="nav-count">{{ activeJobsCount }}</span>
         </router-link>
 
-        <router-link to="/sources" class="nav-item" active-class="active">
-          <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/>
-          </svg>
-          <span>Sources</span>
-        </router-link>
-
         <router-link to="/settings" class="nav-item" active-class="active">
           <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"/>
@@ -59,7 +52,7 @@
             <line x1="8" y1="2" x2="16" y2="2"/>
             <line x1="7.5" y1="14" x2="16.5" y2="14"/>
           </svg>
-          <span>Health & Monitor</span>
+          <span>Sandbox</span>
         </router-link>
       </nav>
 
@@ -143,7 +136,7 @@ const pageTitles: Record<string, string> = {
   '/downloads':   'Downloads',
   '/sources':     'Sources',
   '/settings':    'Settings',
-  '/health-monitor': 'Health & Monitor',
+  '/health-monitor': 'Sandbox',
 }
 
 const pageTitle = computed(() => {
@@ -994,5 +987,26 @@ body {
 .pill.flat { padding: 3px 7px; font-size: 10.5px; letter-spacing: .02em; }
 .pill.flat::before { display: none; }
 
-
+/* ── Confirm dialog (shared across views, teleported to body) ── */
+.confirm-overlay {
+  position: fixed; inset: 0; z-index: 9999;
+  background: rgba(0,0,0,.55); backdrop-filter: blur(3px);
+  display: flex; align-items: center; justify-content: center;
+}
+.confirm-box {
+  background: var(--surface); border: 1px solid var(--border-2);
+  border-radius: 14px; padding: 22px 24px;
+  max-width: 420px; width: calc(100vw - 32px);
+  display: flex; flex-direction: column; gap: 16px;
+  box-shadow: 0 24px 60px rgba(0,0,0,.5);
+}
+.confirm-icon { color: var(--red); } /* override per-dialog with inline style */
+.confirm-title { font-weight: 700; font-size: 15px; color: var(--text-bright); margin: 0 0 4px; }
+.confirm-msg   { font-size: 13px; color: var(--text-2); margin: 0; }
+.confirm-actions { display: flex; gap: 8px; justify-content: flex-end; flex-wrap: wrap; }
+.confirm-body  { flex: 1; display: flex; flex-direction: column; gap: 10px; }
+.confirm-check {
+  display: flex; align-items: center; gap: 8px;
+  font-size: 13px; color: var(--text-2); cursor: pointer; margin-top: 4px;
+}
 </style>

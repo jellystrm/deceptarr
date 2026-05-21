@@ -174,12 +174,17 @@ def search_response(settings: Settings, query: dict[str, list[str]]) -> str:
     t = _first(query, "t", "search")
     if t != "caps":
         q = _first(query, "q", "").strip()
-        tmdb_id = _first(query, "tmdbid", "")
-        tvdb_id = _first(query, "tvdbid", "")
-        kind = "TV" if (t == "tvsearch" or tvdb_id) else "Movie"
+        tmdb_id_str = _first(query, "tmdbid", "")
+        tvdb_id_str = _first(query, "tvdbid", "")
+        is_tv = t == "tvsearch" or bool(tvdb_id_str)
+        kind = "TV" if is_tv else "Movie"
+        tmdb_id_int = _int_or_none(tmdb_id_str)
+        tvdb_id_int = _int_or_none(tvdb_id_str)
+        # Resolve canonical TMDB ID (tvdb → tmdb when necessary) for deduplication
+        canonical_tmdb_id = _resolve_tmdb_id(settings, tmdb_id_int, tvdb_id_int, is_tv)
         # Use the title already resolved inside build_releases (first release has it)
         resolved_title = (releases[0].title if releases else None) or q
-        fallback = (f"TMDB {tmdb_id}" if tmdb_id else "") or (f"TVDB {tvdb_id}" if tvdb_id else "") or ""
+        fallback = (f"TMDB {tmdb_id_str}" if tmdb_id_str else "") or (f"TVDB {tvdb_id_str}" if tvdb_id_str else "") or ""
         display_title = resolved_title if resolved_title and resolved_title not in {"VN Source"} else fallback
         # Reconstruct the full query URL so the user can inspect results in a browser
         flat = {k: v[0] for k, v in query.items() if v}
@@ -187,7 +192,7 @@ def search_response(settings: Settings, query: dict[str, list[str]]) -> str:
         # Skip logging test/RSS queries (no real show identifier)
         if display_title:
             result_titles = [_release_display_title(r) for r in releases]
-            result_grabs = [_release_grab_payload(r) for r in releases]
+            result_grabs = [_release_grab_payload(r, canonical_tmdb_id) for r in releases]
             ActivityLog.get().add(
                 kind="search",
                 title=f"{kind}: {display_title}",
@@ -196,9 +201,10 @@ def search_response(settings: Settings, query: dict[str, list[str]]) -> str:
                 results=result_titles,
                 url=query_url,
                 grabs=result_grabs,
+                tmdb_id=canonical_tmdb_id,
             )
-            # Auto-grab: immediately enqueue best match if any source has auto_download
-            if result_grabs and any(settings.source_auto_download.get(s) for s in settings.source_order):
+            # Auto-grab: immediately enqueue best match if any variant type has auto_download
+            if result_grabs and _has_any_auto_download(settings):
                 threading.Thread(
                     target=_auto_enqueue_best,
                     args=(settings, result_grabs),
@@ -222,68 +228,57 @@ import logging as _logging
 _auto_log = _logging.getLogger(__name__ + ".auto_grab")
 
 
-def _auto_enqueue_best(settings: Settings, grabs: list[dict]) -> None:
-    """Auto-grab the best match, but ONLY when there is a 100% match.
+def _has_any_auto_download(settings: Settings) -> bool:
+    """Return True if any download type has auto_download enabled."""
+    return settings.strm_auto_download or settings.hls_dl_auto_download
 
-    Rules:
-      - Each source can independently opt-in via ``source_auto_download[source] = True``.
-      - Global ``auto_grab`` flag is ignored here; per-source flag controls everything.
-      - "100% match" means the grab's ``server`` label exactly equals the #1 variant
-        in that source's ``source_variant_priority`` (case-insensitive).
-      - If a source has no server label (empty string), it matches any top variant.
-      - No fallback to lower-priority variants: either the top variant is available
-        or we skip — letting the user decide manually in the Indexer.
-      - Among exact matches, prefer the configured ``default_output_mode``.
+
+def _auto_enqueue_best(settings: Settings, grabs: list[dict]) -> None:
+    """Auto-grab the highest-priority match.
+
+    Priority order: source_order → variant_order → type_order.
+    Enqueues the first grab token matching source + server label + output_mode.
     """
-    preferred_mode = settings.default_output_mode
-    auto_dl = settings.source_auto_download   # dict[str, bool]
+    type_auto: dict[str, bool] = {
+        "strm":   settings.strm_auto_download,
+        "hls_dl": settings.hls_dl_auto_download,
+    }
+    type_to_mode: dict[str, str] = {"strm": "strm", "hls_dl": "download"}
+
+    # Build a quick lookup: (source, server_lower, output_mode) → token
+    grab_index: dict[tuple[str, str, str], str] = {}
+    for grab in grabs:
+        src = grab.get("source") or ""
+        srv = (grab.get("server") or "").strip().lower()
+        mode = grab.get("output_mode") or ""
+        token = grab.get("token") or ""
+        if src and mode and token:
+            grab_index.setdefault((src, srv, mode), token)
 
     for source_name in settings.source_order:
-        if not auto_dl.get(source_name, False):
-            continue  # this source doesn't want auto-download
+        for variant_name in settings.variant_order:
+            vname_lower = variant_name.strip().lower()
+            for type_key in settings.type_order:
+                if not type_auto.get(type_key):
+                    continue
+                output_mode = type_to_mode[type_key]
+                # Try exact variant match first, then any-variant fallback (empty server)
+                for srv_key in (vname_lower, ""):
+                    token = grab_index.get((source_name, srv_key, output_mode))
+                    if not token:
+                        continue
+                    try:
+                        grab_url = f"{settings.public_base_url}/grab/{token}"
+                        enqueue_from_url(settings, grab_url)
+                        _auto_log.info(
+                            "auto_grab: enqueued source=%s variant=%r type=%s",
+                            source_name, variant_name, type_key,
+                        )
+                    except Exception:
+                        _auto_log.exception("auto_grab: enqueue failed source=%s", source_name)
+                    return  # first match wins
 
-        variant_order = (
-            settings.source_variant_priority.get(source_name)
-            or _DEFAULT_VARIANTS
-        )
-        top_variant = variant_order[0].strip().lower() if variant_order else ""
-
-        source_grabs = [g for g in grabs if g.get("source") == source_name]
-        if not source_grabs:
-            continue
-
-        # Filter: only grabs whose server exactly matches the top variant
-        # (or server is empty — source doesn't distinguish variants)
-        exact = [
-            g for g in source_grabs
-            if (g.get("server") or "").strip().lower() in ("", top_variant)
-        ]
-        if not exact:
-            _auto_log.debug(
-                "auto_grab: source=%s has grabs but none match top variant %r — skipping",
-                source_name, top_variant,
-            )
-            continue  # 100% match not satisfied → skip, no fallback
-
-        # Prefer the configured output mode
-        mode_match = [g for g in exact if g.get("output_mode") == preferred_mode]
-        chosen = (mode_match or exact)[0]
-        token = chosen.get("token")
-        if not token:
-            continue
-
-        try:
-            grab_url = f"{settings.public_base_url}/grab/{token}"
-            enqueue_from_url(settings, grab_url)
-            _auto_log.info(
-                "auto_grab: enqueued source=%s variant=%r mode=%s token=%s…",
-                source_name, top_variant, preferred_mode, token[:32],
-            )
-        except Exception:
-            _auto_log.exception("auto_grab: enqueue failed source=%s", source_name)
-        return  # first auto-enabled source with a 100% match wins
-
-    _auto_log.debug("auto_grab: no 100%% match found in %d grabs", len(grabs))
+    _auto_log.debug("auto_grab: no matching grab in %d grabs", len(grabs))
 
 
 def build_releases(settings: Settings, query: dict[str, list[str]]) -> list[GatewayRelease]:
@@ -312,7 +307,14 @@ def build_releases(settings: Settings, query: dict[str, list[str]]) -> list[Gate
         or (t not in {"movie"} and is_tv_by_cat)
     )
     kind = "episode" if is_tv else "movie"
-    title = q or _resolve_title(settings, tmdb_id, tvdb_id, is_tv) or "VN Source"
+    # Always use the TMDB-canonical title when an ID is available so that multiple
+    # Sonarr/Radarr searches for the same show (e.g. q="Boys", q="Boys 2019",
+    # q="The Boys") all resolve to the same title and collapse into a single
+    # activity entry.  `q` is only used as a last resort when there is no ID.
+    if tmdb_id or tvdb_id:
+        title = _resolve_title(settings, tmdb_id, tvdb_id, is_tv) or q or "VN Source"
+    else:
+        title = q or "VN Source"
     year = year or _resolve_year(settings, tmdb_id, tvdb_id, is_tv)
     modes: list[OutputMode] = ["strm", "download"] if settings.expose_both_modes else [_output_mode(settings.default_output_mode)]
 
@@ -438,12 +440,13 @@ def _release_display_title(release: GatewayRelease) -> str:
     return f"{release.title}{year}{ep} 1080p VN{source_part}{server_part} [{mode_label}]"
 
 
-def _release_grab_payload(release: GatewayRelease) -> dict:
+def _release_grab_payload(release: GatewayRelease, tmdb_id: int | None = None) -> dict:
     return {
         "title": _release_display_title(release),
         "token": encode_release(release),
         "media_kind": release.kind,
         "media_title": release.title,
+        "tmdb_id": tmdb_id if tmdb_id is not None else release.tmdb_id,
         "year": release.year,
         "season": release.season_number,
         "episode": release.episode_number,
@@ -519,6 +522,21 @@ def _int_or_none(value: str) -> int | None:
 
 def _output_mode(value: str) -> OutputMode:
     return "download" if value.lower() in {"download", "hls-dl", "hls_dl"} else "strm"
+
+
+def _resolve_tmdb_id(settings: Settings, tmdb_id: int | None, tvdb_id: int | None, is_tv: bool) -> int | None:
+    """Return the canonical TMDB ID, resolving from TVDB ID when necessary."""
+    if tmdb_id:
+        return tmdb_id
+    if not tvdb_id or not settings.tmdb_api_key:
+        return None
+    tmdb = TmdbClient(settings.tmdb_api_key)
+    if not tmdb.enabled:
+        return None
+    try:
+        return tmdb.tmdb_id_for_tvdb(tvdb_id)
+    except Exception:
+        return None
 
 
 def _resolve_title(settings: Settings, tmdb_id: int | None, tvdb_id: int | None, is_tv: bool) -> str:

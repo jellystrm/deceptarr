@@ -286,8 +286,11 @@ const deduplicatedEvents = computed(() => {
   for (const ev of [...filteredEvents.value].sort((a, b) => b.ts - a.ts)) {
     const first = ev.grabs[0]
     const kind = isTvEvent(ev, first) ? 'tv' : 'movie'
-    const title = mediaTitle(ev, first).toLowerCase().trim()
-    const key = `${kind}:${title}`
+    // Prefer TMDB ID as dedup key — resolves "Boys" / "Boys 2019" / "The Boys"
+    // (same tvdbid → same canonical tmdb_id) into a single entry.
+    // Fall back to normalised title for events without an ID.
+    const tmdbId = ev.tmdb_id ?? first?.tmdb_id
+    const key = tmdbId ? `${kind}:tmdb:${tmdbId}` : `${kind}:${mediaTitle(ev, first).toLowerCase().trim()}`
     if (!seen.has(key)) seen.set(key, ev)
   }
   return [...seen.values()].sort((a, b) => b.ts - a.ts)
@@ -374,11 +377,12 @@ function toMediaNode(ev: ActivityEvent): MediaNode {
   const first = ev.grabs[0]
   const kind: 'movie' | 'tv' = isTvEvent(ev, first) ? 'tv' : 'movie'
   const title = mediaTitle(ev, first)
+  const tmdbId = ev.tmdb_id ?? first?.tmdb_id ?? null
   const node: MediaNode = {
     key: `${ev.ts}:${ev.title}`,
     kind,
     title,
-    tmdbId: null,
+    tmdbId: tmdbId != null ? String(tmdbId) : null,
     status: ev.status || 'ok',
     detail: ev.detail,
     ts: ev.ts,

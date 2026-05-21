@@ -62,6 +62,7 @@ export interface GrabToken {
   token: string
   media_kind?: 'movie' | 'episode'
   media_title?: string
+  tmdb_id?: number | null
   year?: number | null
   season?: number | null
   episode?: number | null
@@ -80,6 +81,7 @@ export interface ActivityEvent {
   results: string[]
   url: string
   grabs: GrabToken[]
+  tmdb_id?: number | null
 }
 
 // ─── Health ───────────────────────────────────────────────────────────────────

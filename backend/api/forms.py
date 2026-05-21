@@ -157,37 +157,37 @@ def form_to_config(form: dict[str, str], current: Settings) -> dict[str, Any]:
             parsed_source_order = list(current.source_order)
         data["source_order"] = parsed_source_order
 
-        # per-source variant priority
-        svp_raw = form.get("source_variant_priority_json", "").strip()
-        if svp_raw:
+        # variant_order: ordered dub labels
+        default_variants = ["Vietsub", "Lồng tiếng", "Thuyết minh"]
+        variant_order_raw = form.get("variant_order_json", "").strip()
+        if variant_order_raw:
             try:
-                svp = _json.loads(svp_raw)
-                if isinstance(svp, dict):
-                    data["source_variant_priority"] = {
-                        k: [str(v) for v in vals]
-                        for k, vals in svp.items()
-                        if k in builtin_source_names and isinstance(vals, list)
-                    }
+                parsed_variant_order = [str(v).strip() for v in _json.loads(variant_order_raw) if str(v).strip()]
             except Exception:
-                pass
+                parsed_variant_order = list(current.variant_order)
         else:
-            data["source_variant_priority"] = current.source_variant_priority
+            parsed_variant_order = list(current.variant_order)
+        for _v in default_variants:
+            if _v not in parsed_variant_order:
+                parsed_variant_order.append(_v)
+        data["variant_order"] = parsed_variant_order
 
-        # per-source auto-download flags
-        sad_raw = form.get("source_auto_download_json", "").strip()
-        if sad_raw:
+        # type_order: ordered list of "strm" / "hls_dl"
+        valid_types = {"strm", "hls_dl"}
+        type_order_raw = form.get("type_order_json", "").strip()
+        if type_order_raw:
             try:
-                sad = _json.loads(sad_raw)
-                if isinstance(sad, dict):
-                    data["source_auto_download"] = {
-                        k: bool(v)
-                        for k, v in sad.items()
-                        if k in builtin_source_names
-                    }
+                parsed_type_order = [t for t in _json.loads(type_order_raw) if t in valid_types]
             except Exception:
-                pass
+                parsed_type_order = list(current.type_order)
         else:
-            data["source_auto_download"] = current.source_auto_download
+            parsed_type_order = list(current.type_order)
+        for _t in ["strm", "hls_dl"]:
+            if _t not in parsed_type_order:
+                parsed_type_order.append(_t)
+        data["type_order"] = parsed_type_order
+        data["strm_auto_download"]   = "strm_auto_download"  in form
+        data["hls_dl_auto_download"] = "hls_dl_auto_download" in form
         return data
 
     if section == "tasks":
@@ -216,6 +216,12 @@ def form_to_config(form: dict[str, str], current: Settings) -> dict[str, Any]:
         data["qb_password"] = form.get("qb_password", current.qb_password)
         data["download_root"] = form.get("download_root", current.download_root).strip()
         data["log_level"] = form.get("log_level", current.log_level).strip() or "INFO"
+        data["download_container"] = form.get("download_container", current.download_container).strip() or "mkv"
+        data["import_mode"] = form.get("import_mode", current.import_mode).strip() or "Move"
+        data["ffmpeg_path"] = form.get("ffmpeg_path", current.ffmpeg_path).strip() or "ffmpeg"
+        data["ffmpeg_extra_args"] = csv("ffmpeg_extra_args")
+        data["retry_after_seconds"] = integer("retry_after_seconds", current.retry_after_seconds)
+        data["job_detail_retention_hours"] = integer("job_detail_retention_hours", current.job_detail_retention_hours)
         return data
 
     if section == "jellyfin":

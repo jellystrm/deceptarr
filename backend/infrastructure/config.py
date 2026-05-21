@@ -295,9 +295,13 @@ class Settings:
     job_detail_retention_hours: int = 24
     torznab_group_sources: bool = False
     source_order: list[str] = field(default_factory=lambda: ["kkphim", "ophim", "nguonc"])
-    source_variant_priority: dict = field(default_factory=dict)   # {"kkphim": ["Vietsub", ...], ...}
-    source_auto_download: dict = field(default_factory=dict)       # {"kkphim": True, ...}
-    auto_grab: bool = False  # global fallback; individual source_auto_download takes precedence
+    # Variant (dub) priority — server label matched at grab time
+    variant_order: list[str] = field(default_factory=lambda: ["Vietsub", "Lồng tiếng", "Thuyết minh"])
+    # Download type priority + auto-grab config
+    type_order: list[str] = field(default_factory=lambda: ["strm", "hls_dl"])
+    strm_auto_download: bool = False
+    hls_dl_auto_download: bool = False
+    auto_grab: bool = False  # legacy fallback
 
     def resolve_ffmpeg(self) -> str:
         """Return the ffmpeg binary path, auto-detecting if not yet resolved."""
@@ -391,23 +395,32 @@ class Settings:
         if not source_order:
             source_order = ["kkphim", "ophim", "nguonc"]
 
-        # ── source_variant_priority + source_auto_download ────────────────────
-        _DEFAULT_VARIANTS = ["Vietsub", "Lồng tiếng", "Thuyết minh"]
-        _raw_svp = _file_value(file_data, "source_variant_priority", {})
-        source_variant_priority: dict = {}
-        if isinstance(_raw_svp, dict):
-            for _src in builtin_source_names:
-                _order = _raw_svp.get(_src)
-                if isinstance(_order, list) and _order:
-                    source_variant_priority[_src] = [str(v) for v in _order]
-                else:
-                    source_variant_priority[_src] = list(_DEFAULT_VARIANTS)
+        # ── variant_order ─────────────────────────────────────────────────────────
+        _default_variants = ["Vietsub", "Lồng tiếng", "Thuyết minh"]
+        _raw_variant_order = _file_value(file_data, "variant_order", _default_variants)
+        if isinstance(_raw_variant_order, list) and _raw_variant_order:
+            variant_order = [str(v).strip() for v in _raw_variant_order if str(v).strip()]
+        else:
+            variant_order = _default_variants
+        # Ensure all defaults are present (append any missing)
+        for _v in _default_variants:
+            if _v not in variant_order:
+                variant_order.append(_v)
 
-        _raw_sad = _file_value(file_data, "source_auto_download", {})
-        source_auto_download: dict = {}
-        if isinstance(_raw_sad, dict):
-            for _src in builtin_source_names:
-                source_auto_download[_src] = bool(_raw_sad.get(_src, False))
+        # ── type_order + auto_download ───────────────────────────────────────────
+        _raw_type_order = _file_value(file_data, "type_order", ["strm", "hls_dl"])
+        valid_types = {"strm", "hls_dl"}
+        if isinstance(_raw_type_order, list):
+            type_order = [t for t in _raw_type_order if t in valid_types]
+        else:
+            type_order = []
+        # Ensure both types present; append any missing ones in default order
+        for _t in ["strm", "hls_dl"]:
+            if _t not in type_order:
+                type_order.append(_t)
+
+        strm_auto_download  = bool(_file_value(file_data, "strm_auto_download",  False))
+        hls_dl_auto_download = bool(_file_value(file_data, "hls_dl_auto_download", False))
 
         # ── Storage paths: config file → auto-detect from Arr → fallback ──────
         # Only detected (non-fallback) values are persisted; fallbacks are not
@@ -493,8 +506,10 @@ class Settings:
             job_detail_retention_hours=int(_file_value(file_data, "job_detail_retention_hours", 24)),
             torznab_group_sources=bool(_file_value(file_data, "torznab_group_sources", False)),
             source_order=source_order,
-            source_variant_priority=source_variant_priority,
-            source_auto_download=source_auto_download,
+            variant_order=variant_order,
+            type_order=type_order,
+            strm_auto_download=strm_auto_download,
+            hls_dl_auto_download=hls_dl_auto_download,
             auto_grab=bool(_file_value(file_data, "auto_grab", False)),
         )
 
@@ -551,8 +566,10 @@ class Settings:
             "job_detail_retention_hours": self.job_detail_retention_hours,
             "torznab_group_sources": self.torznab_group_sources,
             "source_order": self.source_order,
-            "source_variant_priority": self.source_variant_priority,
-            "source_auto_download": self.source_auto_download,
+            "variant_order": self.variant_order,
+            "type_order": self.type_order,
+            "strm_auto_download": self.strm_auto_download,
+            "hls_dl_auto_download": self.hls_dl_auto_download,
             "auto_grab": self.auto_grab,
         }
 

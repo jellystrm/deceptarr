@@ -183,6 +183,30 @@
       </div>
     </div>
   </div>
+
+  <!-- Remove confirm dialog -->
+  <teleport to="body">
+    <div v-if="removeDlg" class="confirm-overlay" @click.self="removeDlg = null">
+      <div class="confirm-box">
+        <div class="confirm-icon">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14H6L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4h6v2"/></svg>
+        </div>
+        <div class="confirm-body">
+          <p class="confirm-title">Remove from queue</p>
+          <p class="confirm-msg">Remove {{ removeDlg.ids.length }} {{ removeDlg.ids.length === 1 ? 'task' : 'tasks' }} from the queue? This cannot be undone.</p>
+          <label class="confirm-check">
+            <input type="checkbox" v-model="removeDlg.deleteFiles" />
+            <span class="check-box"></span>
+            <span>Also delete output file(s) from disk</span>
+          </label>
+        </div>
+        <div class="confirm-actions">
+          <button class="btn ghost sm" @click="removeDlg = null">Cancel</button>
+          <button class="btn danger sm" @click="doRemove">Remove</button>
+        </div>
+      </div>
+    </div>
+  </teleport>
 </template>
 
 <script setup lang="ts">
@@ -412,11 +436,19 @@ async function pauseJobs(ids: string[]) {
   await load()
 }
 
-async function removeJobs(ids: string[]) {
+// ── Remove confirm dialog ─────────────────────────────────────────────────────
+interface RemoveDlg { ids: string[]; deleteFiles: boolean }
+const removeDlg = ref<RemoveDlg | null>(null)
+
+function removeJobs(ids: string[]) {
   if (!ids.length) return
-  const noun = ids.length === 1 ? 'task' : 'tasks'
-  if (!window.confirm(`Remove ${ids.length} ${noun} from the queue?`)) return
-  const deleteFiles = window.confirm('Also delete completed output file(s) from disk?')
+  removeDlg.value = { ids, deleteFiles: false }
+}
+
+async function doRemove() {
+  if (!removeDlg.value) return
+  const { ids, deleteFiles } = removeDlg.value
+  removeDlg.value = null
   await jobAction('delete', ids.join(','), { deleteFiles })
   await load()
 }

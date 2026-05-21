@@ -21,6 +21,7 @@ class ActivityEvent:
     results: list = field(default_factory=list)  # release titles for search events
     url: str = ""      # full torznab query URL for search events
     grabs: list = field(default_factory=list)    # [{title, token}] per release — for manual download
+    tmdb_id: int | None = None  # canonical TMDB ID for deduplication
 
 
 class ActivityLog:
@@ -52,10 +53,12 @@ class ActivityLog:
             instance._events = _load(path)
 
     def add(self, kind: str, title: str, detail: str = "", status: str = "", ref: str = "",
-            results: list | None = None, url: str = "", grabs: list | None = None) -> None:
+            results: list | None = None, url: str = "", grabs: list | None = None,
+            tmdb_id: int | None = None) -> None:
         event = ActivityEvent(ts=int(time.time()), kind=kind, title=title,
                               detail=detail, status=status, ref=ref,
-                              results=results or [], url=url, grabs=grabs or [])
+                              results=results or [], url=url, grabs=grabs or [],
+                              tmdb_id=tmdb_id)
         with self._mu:
             self._events.append(event)
             if len(self._events) > _MAX:
@@ -92,6 +95,7 @@ def _load(path: str) -> list[ActivityEvent]:
             item.setdefault("results", [])
             item.setdefault("url", "")
             item.setdefault("grabs", [])
+            item.setdefault("tmdb_id", None)
             events.append(ActivityEvent(**{k: item[k] for k in ActivityEvent.__dataclass_fields__ if k in item}))
         return events
     except Exception:

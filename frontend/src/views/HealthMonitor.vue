@@ -2,81 +2,10 @@
   <div>
     <div class="page-head">
       <div>
-        <h1>Health &amp; Monitor</h1>
-        <p class="sub">Service health and a dry-run sandbox to simulate the LinkGrabber → resolve flow without touching your queue.</p>
+        <h1>Testing sandbox</h1>
+        <p class="sub">Dry-run sandbox to simulate the LinkGrabber → resolve flow without touching your queue.</p>
       </div>
-      <button class="btn" :disabled="healthRunning" @click="runHealth(true)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-        {{ healthRunning ? 'Checking…' : 'Run health check' }}
-      </button>
-    </div>
-
-    <!-- ── Health ── -->
-    <div class="section-h">
-      <div>
-        <h2>Health <span class="num-pill">6 services</span></h2>
-        <p class="desc">Click a tile to re-check a single service.</p>
       </div>
-    </div>
-
-    <div class="health-grid">
-      <div
-        v-for="tile in tiles"
-        :key="tile.name"
-        class="health-tile"
-        @click="runSingle(tile.name)"
-      >
-        <div class="health-tile-head">
-          <span class="name">{{ tile.label }}</span>
-          <span :class="['dot', tile.dotClass]"></span>
-        </div>
-        <span class="desc">
-          <template v-if="tile.status === 'loading'">checking…</template>
-          <template v-else-if="tile.status === 'ok'">{{ tile.urlShort }} · {{ tile.latency }}ms</template>
-          <template v-else-if="tile.status === 'warn'">{{ tile.urlShort }} · {{ tile.latency }}ms (slow)</template>
-          <template v-else-if="tile.status === 'error'">{{ tile.message || 'unreachable' }}</template>
-          <template v-else>click to test</template>
-        </span>
-      </div>
-    </div>
-
-    <!-- ── Output paths ── -->
-    <div class="section-h" style="margin-top:28px">
-      <div>
-        <h2>Output paths <span class="num-pill">dry-run</span></h2>
-        <p class="desc">Preview where STRM files and HLS-DL downloads will be written before Radarr/Sonarr import scans run.</p>
-      </div>
-      <button class="btn sm" :disabled="pathChecking" @click="testOutputPaths">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
-        {{ pathChecking ? 'Checking…' : 'Test output paths' }}
-      </button>
-    </div>
-
-    <div class="fcard" style="margin-bottom:18px">
-      <div class="fcard-body" style="padding:14px 16px">
-        <div v-if="!pathRows.length" class="path-empty">Run the path test to preview configured output locations.</div>
-        <div v-else class="path-grid">
-          <div v-for="row in pathRows" :key="row.key" class="path-row">
-            <div>
-              <div class="path-label">{{ row.label }}</div>
-              <div class="path-owner">{{ row.owner }}</div>
-            </div>
-            <code>{{ row.path }}</code>
-          </div>
-        </div>
-        <div v-if="pathWarnings.length" class="path-warnings">
-          <div v-for="warning in pathWarnings" :key="warning">⚠ {{ warning }}</div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ── Testing sandbox ── -->
-    <div class="section-h" style="margin-top:28px">
-      <div>
-        <h2>Testing sandbox <span class="num-pill">dry-run</span></h2>
-        <p class="desc">Enter a TMDB reference, then simulate the grabber or test each source resolver. Nothing is queued or written to disk.</p>
-      </div>
-    </div>
 
     <div class="fcard" style="margin-bottom:18px">
       <div class="fcard-head">
@@ -203,39 +132,19 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, nextTick, onMounted } from 'vue'
-import { getHealth, sourceTest, testIndexer, checkOutputPaths, type HealthResult, type SourceTestRequest, type SourceResult } from '../api'
+import { sourceTest, testIndexer, type SourceTestRequest, type SourceResult } from '../api'
 
-interface Tile {
-  name: string; label: string; url: string; urlShort: string
-  status: 'idle' | 'loading' | 'ok' | 'warn' | 'error' | 'unknown'
-  dotClass: string; latency: number | null; message: string
-}
 interface SrcTest {
   name: string; url: string
   loading: boolean; resultText: string; resultClass: string
 }
 interface LogLine { cls: string; ts: string; text: string }
 
-const SERVICES: { name: string; label: string }[] = [
-  { name: 'radarr',   label: 'Radarr'   },
-  { name: 'sonarr',   label: 'Sonarr'   },
-  { name: 'jellyfin', label: 'Jellyfin' },
-  { name: 'kkphim',   label: 'kkphim'   },
-  { name: 'ophim',    label: 'ophim'    },
-  { name: 'nguonc',   label: 'nguonc'   },
-]
-
 const SRC_URLS: Record<string, string> = {
   kkphim: 'https://phimapi.com',
   ophim:  'https://ophim1.com',
   nguonc: 'https://phim.nguonc.com',
 }
-
-const tiles = reactive<Tile[]>(
-  SERVICES.map(s => ({
-    ...s, url: '', urlShort: '', status: 'idle', dotClass: 'gray', latency: null, message: '',
-  }))
-)
 
 const srcTests = reactive<SrcTest[]>(
   ['kkphim', 'ophim', 'nguonc'].map(name => ({
@@ -250,12 +159,8 @@ const title         = ref('')
 const year          = ref('')
 const season        = ref('')
 const episode       = ref('')
-const healthRunning  = ref(false)
 const testingIndexer = ref(false)
 const resolving      = ref(false)
-const pathChecking   = ref(false)
-const pathRows       = ref<{ key: string; label: string; owner: string; path: string }[]>([])
-const pathWarnings   = ref<string[]>([])
 const logLines       = ref<LogLine[]>([])
 const logEl          = ref<HTMLElement | null>(null)
 
@@ -302,83 +207,6 @@ function clearLog() { logLines.value = [] }
 async function copyLog() {
   const text = logLines.value.map(l => `[${l.ts}] ${l.text}`).join('\n')
   try { await navigator.clipboard.writeText(text) } catch {}
-}
-
-function urlShort(url: string): string {
-  try { return new URL(url).hostname } catch { return url }
-}
-
-function applyHealthResult(name: string, result: HealthResult, log = true) {
-  const tile = tiles.find(t => t.name === name)
-  if (!tile) return
-  tile.url = result.url || ''
-  tile.urlShort = urlShort(result.url || '')
-  tile.latency = result.latency
-  tile.message = result.message || ''
-  tile.status = result.status
-
-  if (result.status === 'ok') {
-    tile.dotClass = 'green'
-    if (log) addLog('l-ok', `${name.padEnd(9)} → ${urlShort(result.url || '')} · ${result.latency}ms`)
-  } else if (result.status === 'warn') {
-    tile.dotClass = 'amber'
-    if (log) addLog('l-warn', `${name.padEnd(9)} → ${urlShort(result.url || '')} · ${result.latency}ms (slow)`)
-  } else if (result.status === 'error') {
-    tile.dotClass = 'red'
-    if (log) addLog('l-err', `${name.padEnd(9)} → ${result.message || 'unreachable'}`)
-  } else {
-    tile.dotClass = 'gray'
-    if (log) addLog('l-info', `${name.padEnd(9)} → not configured`)
-  }
-}
-
-async function runHealth(log = false) {
-  if (healthRunning.value) return
-  healthRunning.value = true
-  tiles.forEach(t => { t.status = 'loading'; t.dotClass = 'gray' })
-  if (log) addLog('l-info', '── Health check ──')
-  try {
-    const results = await getHealth()
-    for (const [name, result] of Object.entries(results)) applyHealthResult(name, result, log)
-  } catch (e) {
-    if (log) addLog('l-err', `Health check failed: ${e}`)
-    tiles.forEach(t => { if (t.status === 'loading') { t.status = 'error'; t.dotClass = 'red' } })
-  } finally {
-    healthRunning.value = false
-  }
-}
-
-async function runSingle(name: string) {
-  const tile = tiles.find(t => t.name === name)
-  if (!tile) return
-  tile.status = 'loading'; tile.dotClass = 'gray'
-  try {
-    const results = await getHealth()
-    const result = results[name]
-    if (result) applyHealthResult(name, result, false)
-  } catch (e) {
-    tile.status = 'error'; tile.dotClass = 'red'; tile.message = String(e)
-  }
-}
-
-async function testOutputPaths() {
-  if (pathChecking.value) return
-  pathChecking.value = true
-  addLog('l-info', '── Output path dry-run ──')
-  try {
-    const result = await checkOutputPaths()
-    pathRows.value = result.paths
-    pathWarnings.value = result.warnings || []
-    addLog('l-info', `download root: ${result.roots.download_root}`)
-    addLog('l-info', `movie STRM root: ${result.roots.movie_strm_root}`)
-    addLog('l-info', `series STRM root: ${result.roots.series_strm_root}`)
-    for (const row of result.paths) addLog('l-ok', `${row.label.padEnd(14)} → ${row.path}`)
-    for (const warning of pathWarnings.value) addLog('l-warn', warning)
-  } catch (e) {
-    addLog('l-err', `Output path test failed: ${e}`)
-  } finally {
-    pathChecking.value = false
-  }
 }
 
 async function testTorznab() {
@@ -489,7 +317,7 @@ function describePayload() {
   return name
 }
 
-onMounted(() => runHealth(false))
+onMounted(() => {})
 </script>
 
 <style scoped>
