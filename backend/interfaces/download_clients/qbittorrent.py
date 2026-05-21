@@ -10,9 +10,26 @@ from backend.infrastructure.config import Settings
 from backend.infrastructure.jobs import JobStore
 
 
-def torrents_info(settings: Settings) -> list[dict[str, Any]]:
+def torrents_info(
+    settings: Settings,
+    category: str | None = None,
+    hashes: str | None = None,
+) -> list[dict[str, Any]]:
     jobs = JobStore(settings.state_path).list_jobs()
-    return [_job_to_qbit(job) for job in jobs if job.status != "deleted"]
+    if category in {"all", ""}:
+        category = None
+    wanted_hashes = {part.strip() for part in hashes.split("|") if part.strip()} if hashes else None
+    result: list[dict[str, Any]] = []
+    for job in jobs:
+        if job.status == "deleted":
+            continue
+        if wanted_hashes is not None and job.job_id not in wanted_hashes:
+            continue
+        qbit_job = _job_to_qbit(job)
+        if category and qbit_job["category"] != category:
+            continue
+        result.append(qbit_job)
+    return result
 
 
 def pause(settings: Settings, hashes: str, paused: bool) -> None:
@@ -71,15 +88,19 @@ def build_info() -> dict[str, Any]:
 
 
 def categories(settings: Settings) -> dict[str, Any]:
-    return {"deceptarr": {"name": "deceptarr", "savePath": settings.download_root}}
+    return {
+        "radarr": {"name": "radarr", "savePath": settings.download_root},
+        "sonarr": {"name": "sonarr", "savePath": settings.download_root},
+        "deceptarr": {"name": "deceptarr", "savePath": settings.download_root},
+    }
 
 
 def transfer_info() -> dict[str, int]:
     return {"dl_info_speed": 0, "up_info_speed": 0, "dl_info_data": 0, "up_info_data": 0}
 
 
-def sync_maindata(settings: Settings) -> dict[str, Any]:
-    return {"torrents": {job["hash"]: job for job in torrents_info(settings)}}
+def sync_maindata(settings: Settings, category: str | None = None) -> dict[str, Any]:
+    return {"torrents": {job["hash"]: job for job in torrents_info(settings, category=category)}}
 
 
 def _job_to_qbit(job: GatewayJob) -> dict[str, Any]:
@@ -102,7 +123,7 @@ def _job_to_qbit(job: GatewayJob) -> dict[str, Any]:
     return {
         "hash": job.job_id,
         "name": _job_name(job),
-        "category": job.category,
+        "category": _job_category(job),
         "state": state,
         "progress": progress,
         "size": 1024 * 1024 * 1024,
@@ -130,6 +151,13 @@ def _job_to_qbit(job: GatewayJob) -> dict[str, Any]:
 def _job_name(job: GatewayJob) -> str:
     suffix = "STRM" if job.release.output_mode == "strm" else "HLS-DL"
     return f"{job.release.title} [{suffix}]"
+
+
+def _job_category(job: GatewayJob) -> str:
+    category = (job.category or "").strip()
+    if category and category != "deceptarr":
+        return category
+    return "radarr" if job.release.kind == "movie" else "sonarr"
 
 
 def _hashes(settings: Settings, hashes: str) -> list[str]:

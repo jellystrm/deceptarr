@@ -16,7 +16,13 @@ def settings(tmp_path) -> Settings:
     return replace(Settings.load(), state_path=str(tmp_path / "state.json"))
 
 
-def _release() -> GatewayRelease:
+def _release(kind: str = "movie") -> GatewayRelease:
+    if kind == "episode":
+        return GatewayRelease(
+            title="Breaking Bad", kind="episode", output_mode="strm",
+            source_name="kkphim", query="Breaking Bad", tvdb_id=81189,
+            season_number=1, episode_number=1,
+        )
     return GatewayRelease(
         title="Avengers", kind="movie", output_mode="strm",
         source_name="kkphim", query="Avengers", tmdb_id=24428,
@@ -39,6 +45,34 @@ class TestDelete:
         qbittorrent.delete(settings, "job123")
         assert JobStore(settings.state_path).get("job123").status == "deleted"
         assert qbittorrent.torrents_info(settings) == []
+
+
+class TestTorrentInfo:
+    def test_generic_movie_category_is_reported_as_radarr(self, settings):
+        _seed(settings, "queued")
+        [item] = qbittorrent.torrents_info(settings)
+        assert item["category"] == "radarr"
+
+    def test_category_filter_separates_radarr_and_sonarr(self, settings):
+        store = JobStore(settings.state_path)
+        store.upsert(
+            GatewayJob(
+                job_id="movie-job", release=_release("movie"), status="queued",
+                progress=0.0, created_at=1, updated_at=1, category="deceptarr",
+            )
+        )
+        store.upsert(
+            GatewayJob(
+                job_id="episode-job", release=_release("episode"), status="queued",
+                progress=0.0, created_at=1, updated_at=1, category="deceptarr",
+            )
+        )
+
+        radarr = qbittorrent.torrents_info(settings, category="radarr")
+        sonarr = qbittorrent.torrents_info(settings, category="sonarr")
+
+        assert [item["hash"] for item in radarr] == ["movie-job"]
+        assert [item["hash"] for item in sonarr] == ["episode-job"]
 
 
 class TestPause:

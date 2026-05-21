@@ -43,8 +43,14 @@ def torrents_categories() -> JSONResponse:
 
 
 @router.get("/torrents/info")
-def torrents_info() -> JSONResponse:
-    return JSONResponse(qbittorrent.torrents_info(Settings.load()))
+def torrents_info(request: Request) -> JSONResponse:
+    return JSONResponse(
+        qbittorrent.torrents_info(
+            Settings.load(),
+            category=request.query_params.get("category") or None,
+            hashes=request.query_params.get("hashes") or None,
+        )
+    )
 
 
 @router.get("/torrents/properties")
@@ -58,8 +64,13 @@ def torrents_files() -> JSONResponse:
 
 
 @router.get("/sync/maindata")
-def sync_maindata() -> JSONResponse:
-    return JSONResponse(qbittorrent.sync_maindata(Settings.load()))
+def sync_maindata(request: Request) -> JSONResponse:
+    return JSONResponse(
+        qbittorrent.sync_maindata(
+            Settings.load(),
+            category=request.query_params.get("category") or None,
+        )
+    )
 
 
 @router.get("/transfer/info")
