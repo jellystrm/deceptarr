@@ -27,6 +27,11 @@
       </div>
       <div class="divider"></div>
       <span class="spacer"></span>
+      <button class="btn ghost sm" :disabled="!visibleGroups.length" @click="toggleAllPkgs">
+        <svg v-if="allPkgsCollapsed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 13 12 18 17 13"/><polyline points="7 6 12 11 17 6"/></svg>
+        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 11 12 6 17 11"/><polyline points="7 18 12 13 17 18"/></svg>
+        {{ allPkgsCollapsed ? 'Expand all' : 'Collapse all' }}
+      </button>
       <button class="btn ghost sm" :disabled="!filteredEvents.length" @click="clearFiltered">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
         Clear {{ activeFilter === 'all' ? 'all' : activeFilter === 'nomatch' ? 'no-match' : 'matched' }}
@@ -335,6 +340,19 @@ async function clearFiltered() {
     try { await deleteActivity(ev.ts, ev.title) } catch {}
   }
   await load()
+}
+
+const allPkgsCollapsed = computed(() =>
+  visibleGroups.value.length > 0 &&
+  visibleGroups.value.every(g => collapsedPkgs.value.has(g.key))
+)
+
+function toggleAllPkgs() {
+  if (allPkgsCollapsed.value) {
+    collapsedPkgs.value = new Set()
+  } else {
+    collapsedPkgs.value = new Set(visibleGroups.value.map(g => g.key))
+  }
 }
 
 function togglePkg(key: string) {

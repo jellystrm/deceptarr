@@ -40,6 +40,12 @@
           Errors <span class="n red">{{ counts.error }}</span>
         </span>
       </div>
+      <span class="spacer"></span>
+      <button class="btn ghost sm" :disabled="!downloadGroups.length" @click="toggleAllPkgs">
+        <svg v-if="allPkgsCollapsed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 13 12 18 17 13"/><polyline points="7 6 12 11 17 6"/></svg>
+        <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 11 12 6 17 11"/><polyline points="7 18 12 13 17 18"/></svg>
+        {{ allPkgsCollapsed ? 'Expand all' : 'Collapse all' }}
+      </button>
     </div>
 
     <div v-if="!jobs.length" class="empty-state">
@@ -385,6 +391,19 @@ async function deleteJobs(ids: string[]) {
 async function bulk(action: 'resume_all' | 'pause_all' | 'clear_done') {
   await bulkAction(action)
   await load()
+}
+
+const allPkgsCollapsed = computed(() =>
+  downloadGroups.value.length > 0 &&
+  downloadGroups.value.every(g => collapsedPkgs.value.has(g.key))
+)
+
+function toggleAllPkgs() {
+  if (allPkgsCollapsed.value) {
+    collapsedPkgs.value = new Set()
+  } else {
+    collapsedPkgs.value = new Set(downloadGroups.value.map(g => g.key))
+  }
 }
 
 function togglePkg(key: string) {
