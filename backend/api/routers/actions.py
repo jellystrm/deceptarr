@@ -68,11 +68,15 @@ async def tasks_bulk(request: Request) -> Response:
     store = JobStore(settings.state_path)
     jobs = store.list_jobs()
     if action == "resume_all":
-        hashes = ",".join(j.job_id for j in jobs if j.status in {"paused", "error", "queued"} and not j.paused)
+        hashes = ",".join(
+            j.job_id
+            for j in jobs
+            if j.paused or j.status in {"error", "queued", "running"}
+        )
         if hashes:
             qbittorrent.pause(settings, hashes, False)
     elif action == "pause_all":
-        hashes = ",".join(j.job_id for j in jobs if j.status == "running")
+        hashes = ",".join(j.job_id for j in jobs if j.status in {"running", "queued"} and not j.paused)
         if hashes:
             qbittorrent.pause(settings, hashes, True)
     elif action == "clear_done":

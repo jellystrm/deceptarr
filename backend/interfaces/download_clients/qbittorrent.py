@@ -163,4 +163,5 @@ def _job_category(job: GatewayJob) -> str:
 def _hashes(settings: Settings, hashes: str) -> list[str]:
     if hashes == "all":
         return [job.job_id for job in JobStore(settings.state_path).list_jobs()]
-    return [part.strip() for part in hashes.split("|") if part.strip()]
+    normalized = hashes.replace(",", "|")
+    return [part.strip() for part in normalized.split("|") if part.strip()]

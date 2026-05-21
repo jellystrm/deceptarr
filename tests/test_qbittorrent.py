@@ -5,6 +5,8 @@ from dataclasses import replace
 from unittest.mock import patch
 
 import pytest
+from fastapi.testclient import TestClient
+from backend.api import create_app
 from backend.domain.models import GatewayJob, GatewayRelease
 from backend.infrastructure.config import Settings
 from backend.infrastructure.jobs import JobStore
@@ -45,6 +47,21 @@ class TestDelete:
         qbittorrent.delete(settings, "job123")
         assert JobStore(settings.state_path).get("job123").status == "deleted"
         assert qbittorrent.torrents_info(settings) == []
+
+    def test_delete_accepts_comma_separated_hashes(self, settings):
+        store = JobStore(settings.state_path)
+        for job_id in ("job-a", "job-b"):
+            store.upsert(
+                GatewayJob(
+                    job_id=job_id, release=_release(), status="completed",
+                    progress=1.0, created_at=1, updated_at=1,
+                )
+            )
+
+        qbittorrent.delete(settings, "job-a,job-b")
+
+        assert JobStore(settings.state_path).get("job-a").status == "deleted"
+        assert JobStore(settings.state_path).get("job-b").status == "deleted"
 
 
 class TestTorrentInfo:
@@ -111,3 +128,47 @@ class TestResumeIsRetry:
         with patch.object(qbittorrent.threading, "Thread") as mock_thread:
             qbittorrent.pause(settings, "nope", False)
         mock_thread.assert_not_called()
+
+
+class TestBulkActions:
+    def test_resume_all_unpauses_paused_jobs(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CONFIG_PATH", str(tmp_path / "config.json"))
+        settings = replace(Settings.load(), state_path=str(tmp_path / "state.json"))
+        from backend.infrastructure.config import save_settings
+        save_settings(settings.to_config_dict(), settings.config_path)
+        store = JobStore(settings.state_path)
+        store.upsert(
+            GatewayJob(
+                job_id="paused-job", release=_release(), status="queued",
+                progress=0.0, created_at=1, updated_at=1, paused=True,
+            )
+        )
+
+        with patch.object(qbittorrent.threading, "Thread") as mock_thread:
+            response = TestClient(create_app()).post("/tasks/bulk", data={"action": "resume_all"})
+
+        assert response.status_code == 200
+        job = JobStore(settings.state_path).get("paused-job")
+        assert job.paused is False
+        assert job.status == "queued"
+        mock_thread.assert_called_once()
+
+    def test_pause_all_pauses_queued_and_running_jobs(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("CONFIG_PATH", str(tmp_path / "config.json"))
+        settings = replace(Settings.load(), state_path=str(tmp_path / "state.json"))
+        from backend.infrastructure.config import save_settings
+        save_settings(settings.to_config_dict(), settings.config_path)
+        store = JobStore(settings.state_path)
+        for job_id, status in (("queued-job", "queued"), ("running-job", "running")):
+            store.upsert(
+                GatewayJob(
+                    job_id=job_id, release=_release(), status=status,
+                    progress=0.0, created_at=1, updated_at=1,
+                )
+            )
+
+        response = TestClient(create_app()).post("/tasks/bulk", data={"action": "pause_all"})
+
+        assert response.status_code == 200
+        assert JobStore(settings.state_path).get("queued-job").paused is True
+        assert JobStore(settings.state_path).get("running-job").paused is True
