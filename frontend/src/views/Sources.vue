@@ -72,17 +72,6 @@
           <button class="btn" @click="addToOrder" :disabled="!addName">Add</button>
         </div>
 
-        <!-- Custom template JSON -->
-        <div style="margin-top:20px">
-          <div class="field full">
-            <label>
-              HLS Template Sources
-              <span class="hint">JSON array of custom source definitions</span>
-            </label>
-            <textarea v-model="templatesJson" class="json-area" spellcheck="false" rows="8" />
-            <div v-if="jsonError" class="err-msg-inline">{{ jsonError }}</div>
-          </div>
-        </div>
       </div>
 
       <div class="card-foot">
@@ -112,8 +101,6 @@ const BUILTIN_URLS: Record<string, string> = {
 
 const builtins    = ref<string[]>(BUILTINS)
 const order       = ref<string[]>([])
-const templatesJson = ref('[]')
-const jsonError   = ref('')
 const saving      = ref(false)
 const saved       = ref(false)
 const saveError   = ref('')
@@ -122,7 +109,7 @@ const addName     = ref('')
 const availableBuiltins = computed(() => builtins.value.filter(b => !order.value.includes(b)))
 
 function sourceUrl(name: string): string {
-  return BUILTIN_URLS[name] || 'custom source'
+  return BUILTIN_URLS[name] || ''
 }
 
 let drag = -1
@@ -160,28 +147,13 @@ function addToOrder() {
   addName.value = ''
 }
 
-function validateJson() {
-  jsonError.value = ''
-  try {
-    const parsed = JSON.parse(templatesJson.value)
-    if (!Array.isArray(parsed)) throw new Error('Must be a JSON array')
-    return parsed
-  } catch (e: unknown) {
-    jsonError.value = String(e)
-    return null
-  }
-}
-
 async function save() {
-  const templates = validateJson()
-  if (!templates) return
   saving.value = true
   saveError.value = ''
   saved.value = false
   try {
     await saveSettings({
       _section: 'sources',
-      hls_template_sources: JSON.stringify(templates),
       source_order_json: JSON.stringify(order.value),
     })
     saved.value = true
@@ -197,27 +169,12 @@ onMounted(async () => {
   try {
     const cfg = await getConfig()
     order.value = [...((cfg.source_order as string[] | undefined) || [])]
-    const tpl = cfg.hls_template_sources
-    templatesJson.value = JSON.stringify(tpl, null, 2)
-    if (Array.isArray(tpl)) {
-      for (const t of tpl) {
-        const name = (t as Record<string, string>).name
-        if (name && !BUILTINS.includes(name)) builtins.value = [...new Set([...builtins.value, name])]
-      }
-    }
+      .filter(name => BUILTINS.includes(name))
   } catch {}
 })
 </script>
 
 <style scoped>
 .add-row { display: flex; align-items: center; gap: 10px; margin-top: 14px; }
-.json-area {
-  width: 100%; background: var(--bg); border: 1px solid var(--border); border-radius: 8px;
-  color: var(--text); padding: 12px; font-family: var(--font-mono);
-  font-size: 12px; line-height: 1.5; resize: vertical; outline: none;
-  transition: border-color .12s;
-}
-.json-area:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(94,224,189,.12); }
 .empty-order { color: var(--text-3); font-size: 12px; text-align: center; padding: 16px 0; }
-.err-msg-inline { font-size: 12px; color: var(--red); margin-top: 4px; }
 </style>

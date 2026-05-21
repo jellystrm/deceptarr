@@ -1,11 +1,14 @@
 from __future__ import annotations
 
+import json
 from unittest.mock import MagicMock, patch
 
 from fastapi.testclient import TestClient
 
 from backend.api import create_app
+from backend.domain.models import GatewayJob, GatewayRelease
 from backend.infrastructure.activity import ActivityLog
+from backend.infrastructure.jobs import JobStore
 
 
 def test_health_uses_ophim_home_endpoint(tmp_path, monkeypatch):
@@ -79,3 +82,43 @@ def test_activity_delete_removes_event(tmp_path, monkeypatch):
     assert response.status_code == 200
     assert response.json()["deleted"] is True
     assert client.get("/api/activity").json() == []
+
+
+def test_pipeline_enriches_placeholder_job_title(tmp_path, monkeypatch):
+    config_path = tmp_path / "config.json"
+    state_path = tmp_path / "state.json"
+    config_path.write_text(
+        json.dumps({"state_path": str(state_path), "tmdb_api_key": "fake-key"}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("CONFIG_PATH", str(config_path))
+    monkeypatch.setenv("TMDB_API_KEY", "fake-key")
+    store = JobStore(str(state_path))
+    store.upsert(
+        GatewayJob(
+            job_id="movie:24428",
+            release=GatewayRelease(
+                title="TMDB 24428",
+                kind="movie",
+                output_mode="strm",
+                source_name=None,
+                query="TMDB 24428",
+                tmdb_id=24428,
+            ),
+            status="queued",
+            progress=0,
+            created_at=1,
+            updated_at=1,
+        )
+    )
+    client = TestClient(create_app())
+
+    with patch("backend.application.grab_service.TmdbClient") as mock_tmdb:
+        tmdb = MagicMock()
+        tmdb.enabled = True
+        tmdb.get_movie_title.return_value = ("The Avengers", 2012)
+        mock_tmdb.return_value = tmdb
+        response = client.get("/api/pipeline")
+
+    assert response.status_code == 200
+    assert response.json()[0]["title"] == "The Avengers"

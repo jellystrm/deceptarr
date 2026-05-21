@@ -14,6 +14,7 @@ from backend.infrastructure.activity import ActivityLog
 from backend.infrastructure.config import Settings, save_settings, _generate_torznab_key
 from backend.infrastructure.jobs import JobStore
 from backend.api.forms import form_to_config
+from backend.application.grab_service import _enrich_with_tmdb
 from backend.interfaces.indexers.torznab import build_releases, search_response, _release_display_title, _release_grab_payload
 
 log = logging.getLogger(__name__)
@@ -79,11 +80,15 @@ def regen_torznab_key() -> JSONResponse:
 def pipeline() -> JSONResponse:
     """Native job list — richer than /api/jobs (qBit format)."""
     settings = Settings.load()
-    jobs = JobStore(settings.state_path).list_jobs()
+    store = JobStore(settings.state_path)
+    jobs = store.list_jobs()
     result = []
     for job in jobs:
         if job.status == "deleted":
             continue
+        release = _enrich_with_tmdb(settings, job.release)
+        if release != job.release:
+            job = store.update(job.job_id, release=dataclasses.asdict(release))
         display_status = (
             "paused" if job.paused and job.status in {"queued", "running"} else job.status
         )

@@ -27,7 +27,7 @@ pytestmark = pytest.mark.skipif(not _LIVE, reason="set LIVE_SOURCES=1 to run liv
 # ── helpers ────────────────────────────────────────────────────────────────────
 
 def _sources():
-    return build_sources([], tmdb_api_key="")
+    return build_sources(tmdb_api_key="")
 
 
 def _ep(title: str, tmdb_id: int, tvdb_id: int | None,

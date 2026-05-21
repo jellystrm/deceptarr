@@ -8,6 +8,7 @@ from collections.abc import Callable
 from dataclasses import replace
 
 from backend.adapters.media_managers import RadarrClient, SonarrClient
+from backend.application.grab_service import _enrich_with_tmdb
 from backend.application.output_service import OutputService
 from backend.domain.models import EpisodeWanted, GatewayJob, GatewayRelease, MovieWanted, SourceHit
 from backend.infrastructure.config import Settings
@@ -24,7 +25,7 @@ class Worker:
         self.settings = settings
         self.radarr = RadarrClient(settings.radarr_url, settings.radarr_api_key)
         self.sonarr = SonarrClient(settings.sonarr_url, settings.sonarr_api_key)
-        self.sources = build_sources(settings.hls_template_sources, tmdb_api_key=settings.tmdb_api_key)
+        self.sources = build_sources(tmdb_api_key=settings.tmdb_api_key)
         self.state = StateStore(settings.state_path)
         self.jobs = JobStore(settings.state_path)
         self.downloader = HlsDownloader(settings.download_root, settings.ffmpeg_path, settings.ffmpeg_extra_args)
@@ -49,7 +50,7 @@ class Worker:
         self.settings = next_settings
         self.radarr = RadarrClient(next_settings.radarr_url, next_settings.radarr_api_key)
         self.sonarr = SonarrClient(next_settings.sonarr_url, next_settings.sonarr_api_key)
-        self.sources = build_sources(next_settings.hls_template_sources, tmdb_api_key=next_settings.tmdb_api_key)
+        self.sources = build_sources(tmdb_api_key=next_settings.tmdb_api_key)
         self.state = StateStore(next_settings.state_path)
         self.downloader = HlsDownloader(
             next_settings.download_root,
@@ -84,6 +85,8 @@ class Worker:
                 tmdb_id=movie.tmdb_id,
                 imdb_id=movie.imdb_id,
             )
+            release = _enrich_with_tmdb(self.settings, release)
+            wanted = replace(movie, title=release.query or release.title, year=release.year, tmdb_id=release.tmdb_id)
             now = int(time.time())
             existing = self.jobs.get(job_id)
             job = GatewayJob(
@@ -96,14 +99,14 @@ class Worker:
                 category="deceptarr",
             )
             self.jobs.upsert(job)
-            path = output.strm_path(job) if mode == "strm" else self.downloader.movie_path(movie)
+            path = output.strm_path(job) if mode == "strm" else self.downloader.movie_path(wanted)
             self._process_item(
                 key=job_id,
-                label=f"movie {movie.title}",
+                label=f"movie {release.title}",
                 path=path,
                 job=job,
                 output=output,
-                resolver=lambda source, item=movie: source.resolve_movie(item),
+                resolver=lambda source, item=wanted: source.resolve_movie(item),
                 importer=lambda import_path: self.radarr.import_path(import_path, self.settings.import_mode),
             )
 
@@ -127,6 +130,13 @@ class Worker:
                 season_number=episode.season_number,
                 episode_number=episode.episode_number,
             )
+            release = _enrich_with_tmdb(self.settings, release)
+            wanted = replace(
+                episode,
+                series_title=release.query or release.title,
+                year=release.year,
+                tmdb_id=release.tmdb_id,
+            )
             now = int(time.time())
             existing = self.jobs.get(job_id)
             job = GatewayJob(
@@ -139,17 +149,17 @@ class Worker:
                 category="deceptarr",
             )
             self.jobs.upsert(job)
-            path = output.strm_path(job) if mode == "strm" else self.downloader.episode_path(episode)
+            path = output.strm_path(job) if mode == "strm" else self.downloader.episode_path(wanted)
             self._process_item(
                 key=job_id,
                 label=(
-                    f"episode {episode.series_title} "
+                    f"episode {release.title} "
                     f"S{episode.season_number:02d}E{episode.episode_number:02d}"
                 ),
                 path=path,
                 job=job,
                 output=output,
-                resolver=lambda source, item=episode: source.resolve_episode(item),
+                resolver=lambda source, item=wanted: source.resolve_episode(item),
                 importer=lambda import_path: self.sonarr.import_path(import_path, self.settings.import_mode),
             )
 

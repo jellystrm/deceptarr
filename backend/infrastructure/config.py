@@ -289,7 +289,6 @@ class Settings:
     log_level: str = "INFO"
     job_detail_retention_hours: int = 24
     torznab_group_sources: bool = False
-    hls_template_sources: list[dict[str, Any]] = field(default_factory=list)
     source_order: list[str] = field(default_factory=lambda: ["kkphim", "ophim", "nguonc"])
 
     def resolve_ffmpeg(self) -> str:
@@ -371,14 +370,13 @@ class Settings:
             ffmpeg_extra_args = list(_FFMPEG_EXTRA_DEFAULTS)
         ffmpeg_path = str(_file_value(file_data, "ffmpeg_path", "")).strip()
 
-        # ── hls_template_sources: file only, no env ────────────────────────────
-        hls_template_sources = _file_value(file_data, "hls_template_sources", [])
-        if not isinstance(hls_template_sources, list):
-            hls_template_sources = []
-
         # ── source_order: file only ────────────────────────────────────────────
+        builtin_source_names = {"kkphim", "ophim", "nguonc"}
         source_order = _file_value(file_data, "source_order", ["kkphim", "ophim", "nguonc"])
         if not isinstance(source_order, list):
+            source_order = ["kkphim", "ophim", "nguonc"]
+        source_order = [str(name).strip() for name in source_order if str(name).strip() in builtin_source_names]
+        if not source_order:
             source_order = ["kkphim", "ophim", "nguonc"]
 
         # ── Storage paths: config file → auto-detect from Arr → fallback ──────
@@ -447,7 +445,6 @@ class Settings:
             log_level=str(_file_value(file_data, "log_level", "INFO")),
             job_detail_retention_hours=int(_file_value(file_data, "job_detail_retention_hours", 24)),
             torznab_group_sources=bool(_file_value(file_data, "torznab_group_sources", False)),
-            hls_template_sources=hls_template_sources,  # type: ignore[arg-type]
             source_order=source_order,
         )
 
@@ -499,7 +496,6 @@ class Settings:
             "log_level": self.log_level,
             "job_detail_retention_hours": self.job_detail_retention_hours,
             "torznab_group_sources": self.torznab_group_sources,
-            "hls_template_sources": self.hls_template_sources,
             "source_order": self.source_order,
         }
 

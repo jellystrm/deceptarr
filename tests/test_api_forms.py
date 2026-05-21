@@ -77,7 +77,6 @@ class TestFormToConfig:
             "tmdb_api_key": "tmdb-key-123",
             "jellyfin_url": "",
             "jellyfin_api_key": "",
-            "hls_template_sources": "[]",
         }
 
     def test_basic_fields_parsed(self, current):
@@ -86,31 +85,15 @@ class TestFormToConfig:
         assert data["sonarr_url"] == "http://sonarr:8989"
         assert data["tmdb_api_key"] == "tmdb-key-123"
 
-    def test_source_order_derived_from_hls_sources(self, current):
-        """source_order is now derived from the order of sources in hls_template_sources."""
-        import json
-        form = self._base_form()
-        form["_section"] = "sources"
-        form["hls_template_sources"] = json.dumps([
-            {"name": "kkphim", "movie_url_template": ""},
-            {"name": "ophim", "movie_url_template": ""},
-            {"name": "my-source", "movie_url_template": ""},
-        ])
-        data = form_to_config(form, current)
-        assert data["source_order"] == ["kkphim", "ophim", "my-source"]
-
     def test_source_order_json_preserves_built_in_source_order(self, current):
         import json
         form = self._base_form()
         form["_section"] = "sources"
-        form["hls_template_sources"] = json.dumps([
-            {"name": "my-source", "movie_url_template": ""},
-        ])
-        form["source_order_json"] = json.dumps(["ophim", "my-source", "kkphim", "nguonc"])
+        form["source_order_json"] = json.dumps(["ophim", "kkphim", "nguonc"])
 
         data = form_to_config(form, current)
 
-        assert data["source_order"] == ["ophim", "my-source", "kkphim", "nguonc"]
+        assert data["source_order"] == ["ophim", "kkphim", "nguonc"]
 
     def test_checkboxes_present(self, current):
         form = self._base_form()
@@ -147,25 +130,6 @@ class TestFormToConfig:
         form["radarr_url"] = "http://radarr:7878/"
         data = form_to_config(form, current)
         assert not data["radarr_url"].endswith("/")
-
-    def test_hls_template_sources_json(self, current):
-        form = self._base_form()
-        form["hls_template_sources"] = '[{"name":"my-src","movie_url_template":"https://x/{tmdb_id}"}]'
-        data = form_to_config(form, current)
-        assert len(data["hls_template_sources"]) == 1
-        assert data["hls_template_sources"][0]["name"] == "my-src"
-
-    def test_invalid_hls_json_raises(self, current):
-        form = self._base_form()
-        form["hls_template_sources"] = "not json"
-        with pytest.raises(Exception):
-            form_to_config(form, current)
-
-    def test_hls_template_non_list_raises(self, current):
-        form = self._base_form()
-        form["hls_template_sources"] = '{"name":"single-object"}'
-        with pytest.raises(ValueError, match="JSON array"):
-            form_to_config(form, current)
 
     def test_ffmpeg_args_csv(self, current):
         form = self._base_form()

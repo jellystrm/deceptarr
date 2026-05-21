@@ -24,6 +24,9 @@ class TestIsPlaceholderTitle:
     def test_vn_source_is_placeholder(self):
         assert _is_placeholder_title("VN Source") is True
 
+    def test_untitled_is_placeholder(self):
+        assert _is_placeholder_title("Untitled") is True
+
     def test_real_title_is_not_placeholder(self):
         assert _is_placeholder_title("The Avengers") is False
         assert _is_placeholder_title("Breaking Bad") is False
@@ -50,6 +53,7 @@ class TestEnrichWithTmdb:
             enriched = _enrich_with_tmdb(self._settings(), release)
 
         assert enriched.title == "The Avengers"
+        assert enriched.query == "The Avengers"
         assert enriched.year == 2012
         assert enriched.tmdb_id == 24428  # unchanged
 

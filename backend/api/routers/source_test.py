@@ -75,13 +75,13 @@ def _season_plan(tmdb_id: int | None, season: int | None, episode: int | None, s
 
 
 def _resolve_ep_fresh(
-    hls_template_sources: list, tmdb_api_key: str, source_name: str,
+    tmdb_api_key: str, source_name: str,
     title: str, year: int | None, tmdb_id: int | None,
     tvdb_id: int | None, season: int, ep_num: int,
 ) -> tuple[list, list[str]]:
     from backend.sources import build_sources
     from backend.domain.models import EpisodeWanted
-    src = build_sources(hls_template_sources, tmdb_api_key=tmdb_api_key).get(source_name)
+    src = build_sources(tmdb_api_key=tmdb_api_key).get(source_name)
     if not src:
         return [], []
     wanted = EpisodeWanted(
@@ -147,7 +147,7 @@ async def source_test(request: Request) -> Response:
     elif tmdb_id:
         test_log.append("TMDB API key not configured; add Title/Year manually")
 
-    sources = build_sources(settings.hls_template_sources, tmdb_api_key=settings.tmdb_api_key)
+    sources = build_sources(tmdb_api_key=settings.tmdb_api_key)
     results: dict[str, dict] = {}
 
     if scan_mode:
@@ -163,8 +163,7 @@ async def source_test(request: Request) -> Response:
                 futs = {
                     pool.submit(
                         _resolve_ep_fresh,
-                        settings.hls_template_sources, settings.tmdb_api_key,
-                        source_name, title, year, tmdb_id, tvdb_id,
+                        settings.tmdb_api_key, source_name, title, year, tmdb_id, tvdb_id,
                         season_num, ep_num,
                     ): (season_num, ep_num)
                     for season_num, ep_nums in plan

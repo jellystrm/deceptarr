@@ -105,18 +105,12 @@ def _detail_response(
 
 
 def test_build_sources_uses_dedicated_nguonc_source():
-    sources = build_sources([])
+    sources = build_sources()
     assert isinstance(sources["nguonc"], NguonCSource)
 
 
-def test_custom_source_cannot_override_builtin_ophim():
-    sources = build_sources([
-        {
-            "name": "ophim",
-            "movie_url_template": "https://ophim17.cc/{tmdb_id}.m3u8",
-        }
-    ])
-
+def test_build_sources_uses_dedicated_ophim_source():
+    sources = build_sources()
     assert isinstance(sources["ophim"], PhimApiSource)
     assert sources["ophim"].base_url == "https://ophim1.com"
 

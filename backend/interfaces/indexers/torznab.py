@@ -64,7 +64,7 @@ def _available_sources(
 
     from backend.sources import build_sources
 
-    sources_map = build_sources(settings.hls_template_sources, tmdb_api_key=settings.tmdb_api_key)
+    sources_map = build_sources(tmdb_api_key=settings.tmdb_api_key)
     check_season  = season  or 1
     check_episode = episode or 1
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 import logging
 from typing import Any
 from urllib.parse import parse_qs
@@ -100,6 +99,7 @@ def form_to_config(form: dict[str, str], current: Settings) -> dict[str, Any]:
 
     data = current.to_config_dict()
     section = form.get("_section", "")
+    builtin_source_names = {"kkphim", "ophim", "nguonc"}
 
     if section == "radarr":
         data["radarr_url"] = form.get("radarr_url", "").strip().rstrip("/")
@@ -128,23 +128,19 @@ def form_to_config(form: dict[str, str], current: Settings) -> dict[str, Any]:
         return data
 
     if section == "sources":
-        templates_raw = form.get("hls_template_sources", "").strip()
-        templates = json.loads(templates_raw) if templates_raw else []
-        if not isinstance(templates, list):
-            raise ValueError("HLS template sources must be a JSON array")
-        data["hls_template_sources"] = templates
-        parsed_source_order: list[str] | None = None
-        # source_order_json comes from the combined priority list in the UI (includes built-ins).
+        parsed_source_order: list[str] = []
         order_raw = form.get("source_order_json", "").strip()
         if order_raw:
             try:
+                import json
                 order_list = json.loads(order_raw)
-                parsed_source_order = [str(n).strip() for n in order_list if str(n).strip()]
+                parsed_source_order = [
+                    str(n).strip()
+                    for n in order_list
+                    if str(n).strip() in builtin_source_names
+                ]
             except Exception:
                 pass
-        # Fallback: derive from template source names (backward compat / tests).
-        if parsed_source_order is None:
-            parsed_source_order = [str(s.get("name", "")).strip() for s in templates if s.get("name")]
         data["source_order"] = parsed_source_order
         return data
 
@@ -182,11 +178,6 @@ def form_to_config(form: dict[str, str], current: Settings) -> dict[str, Any]:
         data["jellyfin_scan_after_strm"] = "jellyfin_scan_after_strm" in form
         return data
 
-    templates_raw = form.get("hls_template_sources", "").strip()
-    templates = json.loads(templates_raw) if templates_raw else []
-    if not isinstance(templates, list):
-        raise ValueError("HLS template sources must be a JSON array")
-
     return {
         "radarr_url": form.get("radarr_url", "").strip().rstrip("/"),
         "radarr_api_key": form.get("radarr_api_key", ""),
@@ -205,7 +196,11 @@ def form_to_config(form: dict[str, str], current: Settings) -> dict[str, Any]:
         "job_detail_retention_hours": integer("job_detail_retention_hours", current.job_detail_retention_hours),
         "movie_enabled": "movie_enabled" in form,
         "series_enabled": "series_enabled" in form,
-        "source_order": [str(s.get("name", "")).strip() for s in templates if s.get("name")],
+        "source_order": [
+            part.strip()
+            for part in form.get("source_order", "").split(",")
+            if part.strip() in builtin_source_names
+        ],
         "default_output_mode": form.get("default_output_mode", current.default_output_mode).strip() or "strm",
         "expose_both_modes": "expose_both_modes" in form,
         "torznab_api_key": form.get("torznab_api_key", current.torznab_api_key),
@@ -221,6 +216,5 @@ def form_to_config(form: dict[str, str], current: Settings) -> dict[str, Any]:
         "ffmpeg_path": form.get("ffmpeg_path", current.ffmpeg_path).strip() or "ffmpeg",
         "ffmpeg_extra_args": csv("ffmpeg_extra_args"),
         "log_level": form.get("log_level", current.log_level).strip() or "INFO",
-        "hls_template_sources": templates,
         "torznab_group_sources": "torznab_group_sources" in form,
     }

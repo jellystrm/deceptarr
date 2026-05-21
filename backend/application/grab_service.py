@@ -48,8 +48,11 @@ def process_job(settings: Settings, job_id: str) -> None:
     job = store.get(job_id)
     if job is None or job.paused:
         return
+    release = _enrich_with_tmdb(settings, job.release)
+    if release != job.release:
+        job = store.update(job_id, release=asdict(release))
     store.update(job_id, status="running", progress=0.05, error=None)
-    title = job.release.title
+    title = release.title
     try:
         hit, search_log = resolve_release(settings, job.release)
         if hit is None:
@@ -69,7 +72,7 @@ def process_job(settings: Settings, job_id: str) -> None:
 
 def resolve_release(settings: Settings, release: GatewayRelease) -> tuple[SourceHit | None, list[str]]:
     release = _enrich_with_tmdb(settings, release)
-    sources = build_sources(settings.hls_template_sources, tmdb_api_key=settings.tmdb_api_key)
+    sources = build_sources(tmdb_api_key=settings.tmdb_api_key)
     ordered = [release.source_name] if release.source_name else settings.source_order
     all_log: list[str] = []
     for source_name in ordered:
@@ -118,6 +121,8 @@ def _enrich_with_tmdb(settings: Settings, release: GatewayRelease) -> GatewayRel
             if info:
                 real_title, real_year = info
                 updates["title"] = real_title
+                if _is_placeholder_title(release.query):
+                    updates["query"] = real_title
                 if real_year and not release.year:
                     updates["year"] = real_year
                 log.debug("TMDB movie title: tmdb=%s → %r (%s)", tmdb_id, real_title, real_year)
@@ -125,6 +130,8 @@ def _enrich_with_tmdb(settings: Settings, release: GatewayRelease) -> GatewayRel
             series = tmdb.get_series_info(tmdb_id)
             if series.title:
                 updates["title"] = series.title
+                if _is_placeholder_title(release.query):
+                    updates["query"] = series.title
                 if series.series_year and not release.year:
                     updates["year"] = series.series_year
                 log.debug("TMDB series title: tmdb=%s → %r (%s)", tmdb_id, series.title, series.series_year)
@@ -135,7 +142,7 @@ def _enrich_with_tmdb(settings: Settings, release: GatewayRelease) -> GatewayRel
 def _is_placeholder_title(title: str) -> bool:
     """True when the title is a TMDB/TVDB ID placeholder rather than a real name."""
     import re
-    return bool(re.match(r"^(TMDB|TVDB|VN Source)\s*\d*$", title.strip()))
+    return not title.strip() or bool(re.match(r"^(TMDB|TVDB|VN Source|Untitled)\s*\d*$", title.strip(), re.I))
 
 
 def encode_release(release: GatewayRelease) -> str:

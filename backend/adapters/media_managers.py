@@ -11,6 +11,27 @@ from backend.infrastructure.util import as_int
 log = logging.getLogger(__name__)
 
 
+def _movie_title(movie: dict[str, Any]) -> str:
+    title = str(movie.get("title") or movie.get("originalTitle") or "").strip()
+    if title:
+        return title
+    tmdb_id = as_int(movie.get("tmdbId"))
+    return f"TMDB {tmdb_id}" if tmdb_id else f"Radarr movie {movie.get('id', '')}".strip()
+
+
+def _series_title(series: dict[str, Any]) -> str:
+    title = str(series.get("title") or "").strip()
+    if title:
+        return title
+    tmdb_id = as_int(series.get("tmdbId"))
+    tvdb_id = as_int(series.get("tvdbId"))
+    if tmdb_id:
+        return f"TMDB {tmdb_id}"
+    if tvdb_id:
+        return f"TVDB {tvdb_id}"
+    return f"Sonarr series {series.get('id', '')}".strip()
+
+
 class ArrClient:
     def __init__(self, base_url: str, api_key: str, name: str) -> None:
         self.base_url = base_url.rstrip("/")
@@ -60,7 +81,7 @@ class RadarrClient(ArrClient):
             wanted.append(
                 MovieWanted(
                     radarr_id=int(movie["id"]),
-                    title=str(movie.get("title") or movie.get("originalTitle") or "Untitled"),
+                    title=_movie_title(movie),
                     year=as_int(movie.get("year")),
                     tmdb_id=as_int(movie.get("tmdbId")),
                     imdb_id=movie.get("imdbId"),
@@ -87,7 +108,7 @@ class SonarrClient(ArrClient):
                 EpisodeWanted(
                     sonarr_episode_id=int(record["id"]),
                     series_id=int(record["seriesId"]),
-                    series_title=str(series.get("title") or "Untitled"),
+                    series_title=_series_title(series),
                     episode_title=str(record.get("title") or ""),
                     year=as_int(series.get("year")),
                     tmdb_id=as_int(series.get("tmdbId")),
