@@ -27,7 +27,7 @@
       </div>
       <div class="divider"></div>
       <span class="spacer"></span>
-      <button class="btn ghost sm" :disabled="!visibleGroups.length" @click="toggleAllPkgs">
+      <button class="btn ghost sm" :disabled="!displayGroups.length" @click="toggleAllPkgs">
         <svg v-if="allPkgsCollapsed" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 13 12 18 17 13"/><polyline points="7 6 12 11 17 6"/></svg>
         <svg v-else viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="7 11 12 6 17 11"/><polyline points="7 18 12 13 17 18"/></svg>
         {{ allPkgsCollapsed ? 'Expand all' : 'Collapse all' }}
@@ -38,7 +38,7 @@
       </button>
     </div>
 
-    <div v-if="!filteredEvents.length" class="empty-state">
+    <div v-if="!displayGroups.length" class="empty-state">
       <template v-if="!allSearchEvents.length">
         <h3>No activity yet</h3>
         <p>Start the worker or let Radarr / Sonarr hand queries off automatically once configured.</p>
@@ -59,7 +59,7 @@
 
     <div v-else class="pkg-list">
       <div
-        v-for="group in visibleGroups"
+        v-for="group in displayGroups"
         :key="group.key"
         class="pkg"
         :class="{ collapsed: collapsedPkgs.has(group.key) || group.linkCount === 0 }"
@@ -111,8 +111,8 @@
               </span>
               <span class="var-file">{{ variantFilename(group, row.variant) }}</span>
               <span class="var-types">
-                <button class="btn sm" @click="grab(row.variant.strmToken, 'strm')">STRM</button>
-                <button class="btn sm ghost" @click="grab(row.variant.downloadToken, 'download')">HLS-DL</button>
+                <button class="btn sm" @click="grab(row.variant.strmToken, 'strm', row.variant.key)">STRM</button>
+                <button class="btn sm ghost" @click="grab(row.variant.downloadToken, 'download', row.variant.key)">HLS-DL</button>
               </span>
               <span><span class="pill green flat">ok</span></span>
             </div>
@@ -124,6 +124,7 @@
           <!-- TV: season → episode → thead + server rows -->
           <template v-else>
             <template v-for="season in group.seasons" :key="season.key">
+              <template v-if="season.episodes.some(ep => episodeVariantRows(ep).length > 0)">
               <div
                 class="tree-row season"
                 :class="{ collapsed: collapsedSrvs.has(season.key) }"
@@ -134,11 +135,12 @@
                 </svg>
                 <span class="label">{{ season.label }}</span>
                 <div class="meta">
-                  <span>{{ season.linkCount }} links</span>
+                  <span>{{ season.episodes.reduce((n, ep) => n + episodeVariantRows(ep).length, 0) }} links</span>
                 </div>
               </div>
               <div class="tree-children">
                 <template v-for="episode in season.episodes" :key="episode.key">
+                  <template v-if="episodeVariantRows(episode).length > 0">
                   <div
                     class="tree-row episode"
                     :class="{ collapsed: collapsedSrvs.has(episode.key) }"
@@ -149,7 +151,7 @@
                     </svg>
                     <span class="label">{{ episode.label }}</span>
                     <div class="meta">
-                      <span>{{ episode.servers.reduce((n, s) => n + s.variants.length, 0) }} links</span>
+                      <span>{{ episodeVariantRows(episode).length }} links</span>
                     </div>
                   </div>
                   <div class="tree-children">
@@ -168,14 +170,16 @@
                       </span>
                       <span class="var-file">{{ variantFilename(group, row.variant) }}</span>
                       <span class="var-types">
-                        <button class="btn sm" @click="grab(row.variant.strmToken, 'strm')">STRM</button>
-                        <button class="btn sm ghost" @click="grab(row.variant.downloadToken, 'download')">HLS-DL</button>
+                        <button class="btn sm" @click="grab(row.variant.strmToken, 'strm', row.variant.key)">STRM</button>
+                        <button class="btn sm ghost" @click="grab(row.variant.downloadToken, 'download', row.variant.key)">HLS-DL</button>
                       </span>
                       <span><span class="pill green flat">ok</span></span>
                     </div>
                   </div>
+                  </template>
                 </template>
               </div>
+              </template>
             </template>
             <div class="pkg-foot">
               {{ group.linkCount }} result(s) — sources: {{ uniqueSources(group) }} · dubs: {{ uniqueDubs(group) }}
@@ -187,7 +191,7 @@
 
       <!-- Footer summary -->
       <div class="pkg-foot-bar">
-        <span>{{ visibleGroups.length }} items · {{ grabsCount }} links</span>
+        <span>{{ displayGroups.length }} items · {{ grabsCount }} links</span>
         <span v-if="dupSearchCount > 0" class="pill gray flat">{{ dupSearchCount }} duplicate{{ dupSearchCount !== 1 ? 's' : '' }} hidden</span>
       </div>
     </div>
@@ -249,11 +253,12 @@ interface MediaNode {
 
 // ── State ─────────────────────────────────────────────────────────────────────
 
-const events       = ref<ActivityEvent[]>([])
-const router       = useRouter()
-const collapsedPkgs = ref<Set<string>>(new Set())
-const collapsedSrvs = ref<Set<string>>(new Set())
-const activeFilter  = ref<'all' | 'matched' | 'nomatch'>('matched')
+const events            = ref<ActivityEvent[]>([])
+const router            = useRouter()
+const collapsedPkgs     = ref<Set<string>>(new Set())
+const collapsedSrvs     = ref<Set<string>>(new Set())
+const activeFilter      = ref<'all' | 'matched' | 'nomatch'>('matched')
+const grabbedVariantKeys = ref<Set<string>>(new Set())
 let timer: ReturnType<typeof setInterval>
 
 // ── Computed ──────────────────────────────────────────────────────────────────
@@ -299,12 +304,15 @@ async function load() {
   try { events.value = await getActivity() } catch {}
   if (!initialLoadDone) {
     initialLoadDone = true
-    const keys = visibleGroups.value.map(g => g.key)
+    const keys = displayGroups.value.map(g => g.key)
     if (keys.length > 1) collapsedPkgs.value = new Set(keys.slice(1))
   }
 }
 
-async function grab(token: string, mode: string) {
+async function grab(token: string, mode: string, variantKey: string) {
+  const next = new Set(grabbedVariantKeys.value)
+  next.add(variantKey)
+  grabbedVariantKeys.value = next
   await manualGrab(token, mode)
   await router.push('/downloads')
 }
@@ -322,16 +330,29 @@ async function clearFiltered() {
   await load()
 }
 
+// ── Grabbed filtering ─────────────────────────────────────────────────────────
+
+function ungrabbedCount(group: MediaNode): number {
+  if (group.kind === 'movie') return groupVariantRows(group).length
+  return group.seasons.reduce((sum, s) =>
+    sum + s.episodes.reduce((n, ep) => n + episodeVariantRows(ep).length, 0), 0)
+}
+
+// Groups that still have ungrabbed variants (or were no-match)
+const displayGroups = computed(() =>
+  visibleGroups.value.filter(g => g.linkCount === 0 || ungrabbedCount(g) > 0)
+)
+
 const allPkgsCollapsed = computed(() =>
-  visibleGroups.value.length > 0 &&
-  visibleGroups.value.every(g => collapsedPkgs.value.has(g.key))
+  displayGroups.value.length > 0 &&
+  displayGroups.value.every(g => collapsedPkgs.value.has(g.key))
 )
 
 function toggleAllPkgs() {
   if (allPkgsCollapsed.value) {
     collapsedPkgs.value = new Set()
   } else {
-    collapsedPkgs.value = new Set(visibleGroups.value.map(g => g.key))
+    collapsedPkgs.value = new Set(displayGroups.value.map(g => g.key))
   }
 }
 
@@ -493,10 +514,12 @@ function uniqueDubs(group: MediaNode): string {
 
 function groupVariantRows(group: MediaNode): VariantRow[] {
   return group.servers.flatMap(serverVariantRows)
+    .filter(r => !grabbedVariantKeys.value.has(r.variant.key))
 }
 
 function episodeVariantRows(episode: EpisodeNode): VariantRow[] {
   return episode.servers.flatMap(serverVariantRows)
+    .filter(r => !grabbedVariantKeys.value.has(r.variant.key))
 }
 
 function serverVariantRows(srv: ServerNode): VariantRow[] {
