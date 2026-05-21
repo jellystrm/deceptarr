@@ -159,6 +159,7 @@ async def source_test(request: Request) -> Response:
         )
         for source_name in sources:
             ep_map: dict[tuple[int, int], list] = {}
+            ep_log_map: dict[tuple[int, int], list[str]] = {}
             with ThreadPoolExecutor(max_workers=6) as pool:
                 futs = {
                     pool.submit(
@@ -172,8 +173,9 @@ async def source_test(request: Request) -> Response:
                 for f in as_completed(futs):
                     key = futs[f]
                     try:
-                        hits, _ = f.result()
+                        hits, ep_log = f.result()
                         ep_map[key] = hits
+                        ep_log_map[key] = ep_log
                     except Exception:
                         ep_map[key] = []
             episodes_out = [
@@ -181,13 +183,24 @@ async def source_test(request: Request) -> Response:
                 for s, ep in sorted(ep_map)
             ]
             found = sum(1 for e in episodes_out if e["url"])
+
+            # Include the log from the first resolved episode (hit or miss)
+            # so the sandbox shows resolve trace, not just the plan summary.
+            first_hit_key = next((k for k in sorted(ep_map) if ep_map[k]), None)
+            first_miss_key = next((k for k in sorted(ep_map) if not ep_map[k]), None)
+            sample_key = first_hit_key or first_miss_key
+            sample_ep_log = ep_log_map.get(sample_key, []) if sample_key else []
+            if sample_key:
+                s, e = sample_key
+                sample_ep_log = [f"── Sample: S{s:02d}E{e:02d} ──"] + sample_ep_log
+
             results[source_name] = {
                 "status": "ok" if found > 0 else "error",
                 "message": None if found > 0 else "Not found",
                 "episodes": episodes_out,
                 "found": found,
                 "total": sum(len(eps) for _, eps in plan),
-                "log": test_log,
+                "log": test_log + sample_ep_log,
             }
     else:
         for source_name, source in sources.items():
