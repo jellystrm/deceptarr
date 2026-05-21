@@ -255,13 +255,18 @@ class Settings:
     ui_port: int = 8765
 
     # ── Worker ─────────────────────────────────────────────────────────────────
-    poll_interval_seconds: int = 300
-    max_items_per_poll: int = 20
+    movie_poll_interval_seconds: int = 300
+    movie_max_items_per_poll: int = 20
+    series_poll_interval_seconds: int = 3600
+    series_max_items_per_poll: int = 20
     retry_after_seconds: int = 86400
     run_once: bool = False
     worker_enabled: bool = True
     movie_enabled: bool = True
     series_enabled: bool = True
+    # legacy – kept for migration only, not used by worker directly
+    poll_interval_seconds: int = 300
+    max_items_per_poll: int = 20
 
     # ── Output ─────────────────────────────────────────────────────────────────
     default_output_mode: str = "strm"
@@ -347,9 +352,13 @@ class Settings:
         raw_torznab_key = os.getenv("TORZNAB_API_KEY", "").strip()
         if not raw_torznab_key:
             raw_torznab_key = str(_file_value(file_data, "torznab_api_key", "")).strip()
-        if not raw_torznab_key:
+        # Auto-migrate: if key exists but is not a 32-char lowercase hex string
+        # (i.e. was set manually or carried over from a pre-generation build),
+        # regenerate it to match the Radarr/Sonarr API key format.
+        import re as _re
+        if not raw_torznab_key or not _re.fullmatch(r"[0-9a-f]{32}", raw_torznab_key):
             raw_torznab_key = _generate_torznab_key()
-            _needs_persist = True  # new key — save so it survives restarts
+            _needs_persist = True  # non-standard key → migrate to hex32 format
 
         # ── QB credentials: env (default admin/adminadmin) → file ─────────────
         qb_username = os.getenv("QB_USERNAME", "").strip()
@@ -421,6 +430,23 @@ class Settings:
             ui_enabled=_bool_value(file_data, "ui_enabled", "UI_ENABLED", True),
             ui_host=str(_value(file_data, "ui_host", "UI_HOST", "0.0.0.0")),
             ui_port=ui_port,
+            # Per-type schedule (fall back to legacy poll_interval_seconds for migration)
+            movie_poll_interval_seconds=_int_value(
+                file_data, "movie_poll_interval_seconds", "MOVIE_POLL_INTERVAL_SECONDS",
+                _int_value(file_data, "poll_interval_seconds", "POLL_INTERVAL_SECONDS", 300),
+            ),
+            movie_max_items_per_poll=_int_value(
+                file_data, "movie_max_items_per_poll", "MOVIE_MAX_ITEMS_PER_POLL",
+                _int_value(file_data, "max_items_per_poll", "MAX_ITEMS_PER_POLL", 20),
+            ),
+            series_poll_interval_seconds=_int_value(
+                file_data, "series_poll_interval_seconds", "SERIES_POLL_INTERVAL_SECONDS",
+                _int_value(file_data, "poll_interval_seconds", "POLL_INTERVAL_SECONDS", 3600),
+            ),
+            series_max_items_per_poll=_int_value(
+                file_data, "series_max_items_per_poll", "SERIES_MAX_ITEMS_PER_POLL",
+                _int_value(file_data, "max_items_per_poll", "MAX_ITEMS_PER_POLL", 20),
+            ),
             poll_interval_seconds=_int_value(file_data, "poll_interval_seconds", "POLL_INTERVAL_SECONDS", 300),
             max_items_per_poll=_int_value(file_data, "max_items_per_poll", "MAX_ITEMS_PER_POLL", 20),
             retry_after_seconds=_int_value(file_data, "retry_after_seconds", "RETRY_AFTER_SECONDS", 86400),
@@ -473,6 +499,10 @@ class Settings:
             "ui_enabled": self.ui_enabled,
             "ui_host": self.ui_host,
             "ui_port": self.ui_port,
+            "movie_poll_interval_seconds": self.movie_poll_interval_seconds,
+            "movie_max_items_per_poll": self.movie_max_items_per_poll,
+            "series_poll_interval_seconds": self.series_poll_interval_seconds,
+            "series_max_items_per_poll": self.series_max_items_per_poll,
             "poll_interval_seconds": self.poll_interval_seconds,
             "max_items_per_poll": self.max_items_per_poll,
             "retry_after_seconds": self.retry_after_seconds,

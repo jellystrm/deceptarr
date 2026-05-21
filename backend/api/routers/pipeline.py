@@ -11,7 +11,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 
 from backend.infrastructure.activity import ActivityLog
-from backend.infrastructure.config import Settings, save_settings, _generate_torznab_key
+from backend.infrastructure.config import Settings, save_settings, _generate_torznab_key, _ffmpeg_ok
 from backend.infrastructure.jobs import JobStore
 from backend.api.forms import form_to_config
 from backend.application.grab_service import _enrich_with_tmdb
@@ -56,6 +56,23 @@ async def health_check() -> JSONResponse:
 
     pairs = await asyncio.gather(*[probe(n, u) for n, u in services.items()])
     return JSONResponse(dict(pairs))
+
+
+@router.get("/api/check-ffmpeg")
+def check_ffmpeg(path: str = "") -> JSONResponse:
+    """Check whether the given ffmpeg path (or the configured one) is usable."""
+    import subprocess, shutil
+    check_path = path.strip() or Settings.load().ffmpeg_path or "ffmpeg"
+    resolved = shutil.which(check_path)
+    if not resolved:
+        return JSONResponse({"ok": False, "path": check_path, "version": None,
+                             "hint": "ffmpeg not found. Install: brew install ffmpeg  |  apt install ffmpeg  |  apk add ffmpeg"})
+    try:
+        out = subprocess.check_output([resolved, "-version"], stderr=subprocess.STDOUT, timeout=5).decode()
+        version_line = out.splitlines()[0] if out else resolved
+    except Exception as exc:
+        return JSONResponse({"ok": False, "path": check_path, "version": None, "hint": str(exc)})
+    return JSONResponse({"ok": True, "path": resolved, "version": version_line, "hint": None})
 
 
 @router.get("/api/config")

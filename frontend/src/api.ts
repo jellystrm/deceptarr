@@ -163,3 +163,6 @@ export async function bulkAction(action: 'resume_all' | 'pause_all' | 'clear_don
 export async function manualGrab(token: string, outputMode: string): Promise<void> {
   await postForm('/api/manual-grab', { token, output_mode: outputMode })
 }
+
+export interface FfmpegCheckResult { ok: boolean; path: string; version: string | null; hint: string | null }
+export const checkFfmpeg = (path = '') => get<FfmpegCheckResult>('/api/check-ffmpeg' + (path ? '?path=' + encodeURIComponent(path) : ''))

@@ -30,9 +30,15 @@
       </div>
       <div class="divider"></div>
       <div class="group">
-        <span class="filter-tag">All <b>{{ jobs.length }}</b></span>
-        <span class="filter-tag green-v">Running <b>{{ counts.running }}</b></span>
-        <span class="filter-tag red-v">Errors <b>{{ counts.error }}</b></span>
+        <span class="filter-chip" :class="{ active: activeFilter === 'all' }" @click="activeFilter = 'all'">
+          All <span class="n">{{ jobs.length }}</span>
+        </span>
+        <span class="filter-chip" :class="{ active: activeFilter === 'running' }" @click="activeFilter = 'running'">
+          Running <span class="n green">{{ counts.running }}</span>
+        </span>
+        <span class="filter-chip" :class="{ active: activeFilter === 'error' }" @click="activeFilter = 'error'">
+          Errors <span class="n red">{{ counts.error }}</span>
+        </span>
       </div>
     </div>
 
@@ -41,122 +47,201 @@
       <p>When a source resolves to a stream, it shows up here with live progress and status.</p>
     </div>
 
-    <div v-else class="tree-card">
-      <details v-for="group in downloadGroups" :key="group.key" class="tree-node media-node" open>
-        <summary>
-          <span class="chev"></span>
-          <span class="media-icon">{{ group.kind === 'movie' ? 'M' : 'TV' }}</span>
-          <span class="node-title">{{ group.title }}</span>
-          <span class="node-meta">{{ group.count }} tasks</span>
-          <span :class="['pill', statusPill(group.status)]">{{ group.status }}</span>
-          <button class="icon-mini danger" title="Delete media tasks" @click.stop="deleteJobs(group.jobIds)">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </summary>
-
-        <div class="tree-children">
-          <template v-if="group.kind === 'movie'">
-            <JobRow v-for="job in group.jobs" :key="job.id" :job="job" @act="act" />
-          </template>
-
-          <template v-else>
-            <details v-for="season in group.seasons" :key="season.key" class="tree-node season-node" open>
-              <summary>
-                <span class="chev"></span>
-                <span class="node-title">{{ season.label }}</span>
-                <span class="node-meta">{{ season.count }} tasks</span>
-                <button class="icon-mini danger" title="Delete season tasks" @click.stop="deleteJobs(season.jobIds)">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                </button>
-              </summary>
-              <div class="tree-children compact-children">
-                <details v-for="episode in season.episodes" :key="episode.key" class="tree-node episode-node">
-                  <summary>
-                    <span class="chev"></span>
-                    <span class="node-title">{{ episode.label }}</span>
-                    <span class="node-meta">{{ episode.jobs.length }} tasks</span>
-                    <span :class="['pill', statusPill(episode.status)]">{{ episode.status }}</span>
-                    <span class="episode-progress">{{ episode.progress }}%</span>
-                    <button class="icon-mini danger" title="Delete episode tasks" @click.stop="deleteJobs(episode.jobIds)">
-                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                    </button>
-                  </summary>
-                  <div class="tree-children">
-                    <JobRow v-for="job in episode.jobs" :key="job.id" :job="job" @act="act" />
-                  </div>
-                </details>
-              </div>
-            </details>
-          </template>
+    <div v-else class="pkg-list">
+      <div
+        v-for="group in downloadGroups"
+        :key="group.key"
+        class="pkg"
+        :class="{ collapsed: collapsedPkgs.has(group.key) }"
+      >
+        <!-- Package head -->
+        <div class="pkg-head" @click="togglePkg(group.key)">
+          <svg class="pkg-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+          <div :class="['pkg-mark', group.kind === 'movie' ? 'movie' : 'tv']">
+            {{ group.kind === 'movie' ? 'M' : 'TV' }}
+          </div>
+          <div class="pkg-title-block">
+            <div class="pkg-title">{{ group.title }}</div>
+            <div class="pkg-sub">{{ group.count }} task{{ group.count !== 1 ? 's' : '' }}</div>
+          </div>
+          <div class="pkg-right">
+            <span>{{ group.count }} tasks</span>
+            <span :class="['pill', statusPill(group.status)]">{{ group.status }}</span>
+            <span v-if="group.avgPct !== null" style="font-family:var(--font-mono);font-size:11px;">{{ group.avgPct }}%</span>
+            <button class="icon-mini danger" title="Delete media tasks" @click.stop="deleteJobs(group.jobIds)">✕</button>
+          </div>
         </div>
-      </details>
 
-      <div class="card-foot">
-        <span style="font-size:12.5px;color:var(--text-3)">
-          {{ jobs.length }} tasks · {{ counts.running }} running · {{ counts.error }} errors · {{ counts.completed }} done
-        </span>
-        <span v-if="hiddenJobsCount > 0" class="dedup-note">{{ hiddenJobsCount }} duplicate{{ hiddenJobsCount !== 1 ? 's' : '' }} hidden</span>
+        <!-- Progress bar strip -->
+        <div :class="['pkg-bar', pkgBarColor(group.status)]">
+          <span :style="{ width: (group.avgPct ?? 0) + '%' }"></span>
+        </div>
+
+        <!-- Package body -->
+        <div class="pkg-body">
+
+          <!-- MOVIE -->
+          <template v-if="group.kind === 'movie'">
+            <div class="dl-thead-srv">
+              <span>File</span><span>Type</span><span>Progress</span><span>Status</span>
+            </div>
+            <div v-for="job in group.jobs" :key="job.id" class="dl-variant">
+              <span class="var-dub">{{ job.output_mode === 'strm' ? 'STRM' : 'HLS-DL' }}</span>
+              <span class="var-file">{{ job.save_path || job.hls_url || job.title }}</span>
+              <span class="var-types">
+                <span :class="['pill flat', outputModePill(job.output_mode)]">{{ job.output_mode.toUpperCase() }}</span>
+              </span>
+              <div class="var-prog">
+                <div :class="['var-prog-bar', progBarColor(job.status)]">
+                  <span :style="{ width: pct(job) + '%' }"></span>
+                </div>
+                <div class="var-prog-meta">
+                  <span class="a">{{ pct(job) }}%</span>
+                  <span :class="statusTextClass(job.status)">{{ statusText(job) }}</span>
+                </div>
+              </div>
+              <span>
+                <span :class="['pill', statusPill(job.status)]">{{ job.status }}</span>
+              </span>
+              <span class="leaf-actions">
+                <button v-if="canResume(job)" class="icon-mini" title="Resume" @click="act('resume', job.id)">▶</button>
+                <button v-if="canPause(job)" class="icon-mini" title="Pause" @click="act('pause', job.id)">Ⅱ</button>
+                <button class="icon-mini danger" title="Delete" @click="act('delete', job.id)">×</button>
+              </span>
+            </div>
+          </template>
+
+          <!-- TV -->
+          <template v-else>
+            <template v-for="season in group.seasons" :key="season.key">
+              <div
+                class="tree-row season"
+                :class="{ collapsed: collapsedSeasons.has(season.key) }"
+                @click="toggleSeason(season.key)"
+              >
+                <svg class="tree-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+                <span class="label">{{ season.label }}</span>
+                <div class="meta">
+                  <span>{{ season.count }} tasks</span>
+                  <button class="icon-mini danger" title="Delete season tasks" @click.stop="deleteJobs(season.jobIds)">
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div class="tree-children">
+                <template v-for="episode in season.episodes" :key="episode.key">
+                  <div
+                    class="tree-row episode"
+                    :class="{ collapsed: collapsedEpisodes.has(episode.key) }"
+                    @click="toggleEpisode(episode.key)"
+                  >
+                    <svg class="tree-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                    <span class="label">{{ episode.label }}</span>
+                    <div class="meta">
+                      <span :class="['pill', statusPill(episode.status)]">{{ episode.status }}</span>
+                      <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-3)">{{ episode.progress }}%</span>
+                      <button class="icon-mini danger" title="Delete episode tasks" @click.stop="deleteJobs(episode.jobIds)">
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div class="tree-children">
+                    <div class="dl-thead-srv in-episode">
+                      <span>File</span><span>Type</span><span>Progress</span><span>Status</span>
+                    </div>
+                    <div v-for="job in episode.jobs" :key="job.id" class="dl-variant in-episode">
+                      <span class="var-dub">{{ job.output_mode === 'strm' ? 'STRM' : 'HLS-DL' }}</span>
+                      <span class="var-file">{{ job.save_path || job.hls_url || job.title }}</span>
+                      <span class="var-types">
+                        <span :class="['pill flat', outputModePill(job.output_mode)]">{{ job.output_mode.toUpperCase() }}</span>
+                      </span>
+                      <div class="var-prog">
+                        <div :class="['var-prog-bar', progBarColor(job.status)]">
+                          <span :style="{ width: pct(job) + '%' }"></span>
+                        </div>
+                        <div class="var-prog-meta">
+                          <span class="a">{{ pct(job) }}%</span>
+                          <span :class="statusTextClass(job.status)">{{ statusText(job) }}</span>
+                        </div>
+                      </div>
+                      <span>
+                        <span :class="['pill', statusPill(job.status)]">{{ job.status }}</span>
+                      </span>
+                      <span class="leaf-actions">
+                        <button v-if="canResume(job)" class="icon-mini" title="Resume" @click="act('resume', job.id)">▶</button>
+                        <button v-if="canPause(job)" class="icon-mini" title="Pause" @click="act('pause', job.id)">Ⅱ</button>
+                        <button class="icon-mini danger" title="Delete" @click="act('delete', job.id)">×</button>
+                      </span>
+                    </div>
+                  </div>
+                </template>
+              </div>
+            </template>
+          </template>
+
+          <!-- Footer -->
+          <div class="pkg-foot">
+            <span>{{ group.count }} task{{ group.count !== 1 ? 's' : '' }}</span>
+            <span v-if="hiddenJobsCount > 0">{{ hiddenJobsCount }} duplicate{{ hiddenJobsCount !== 1 ? 's' : '' }} hidden</span>
+          </div>
+
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, defineComponent, h, onMounted, onUnmounted, ref, type PropType } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { getPipeline, jobAction, bulkAction, type PipelineJob } from '../api'
 
-interface EpisodeGroup { key: string; label: string; jobs: PipelineJob[]; status: string; progress: number; jobIds: string[] }
-interface SeasonGroup { key: string; label: string; episodes: EpisodeGroup[]; count: number; jobIds: string[] }
+// ── Interfaces ────────────────────────────────────────────────────────────────
+
+interface EpisodeGroup {
+  key: string
+  label: string
+  jobs: PipelineJob[]
+  status: string
+  progress: number
+  jobIds: string[]
+}
+
+interface SeasonGroup {
+  key: string
+  label: string
+  episodes: EpisodeGroup[]
+  count: number
+  jobIds: string[]
+}
+
 interface DownloadGroup {
   key: string
   kind: 'movie' | 'tv'
   title: string
   status: string
   count: number
+  avgPct: number | null
   jobs: PipelineJob[]
   seasons: SeasonGroup[]
   jobIds: string[]
 }
 
-const JobRow = defineComponent({
-  props: {
-    job: { type: Object as PropType<PipelineJob>, required: true },
-  },
-  emits: ['act'],
-  setup(props, { emit }) {
-    const pct = () => `${(props.job.progress * 100).toFixed(0)}%`
-    const canResume = () => ['paused', 'error', 'queued'].includes(props.job.status)
-    const canPause = () => ['running', 'queued'].includes(props.job.status)
-    return () => h('div', { class: 'job-row' }, [
-      h('div', { class: 'job-main' }, [
-        h('div', { class: 'job-title' }, [
-          props.job.output_mode,
-          props.job.hls_url ? h('span', { class: 'job-tag' }, 'resolved') : null,
-        ]),
-        props.job.error
-          ? h('div', { class: 'job-sub error-text' }, props.job.error)
-          : props.job.save_path && props.job.status === 'completed'
-            ? h('div', { class: 'job-sub done-text' }, `Done · ${props.job.save_path}`)
-            : h('div', { class: 'job-sub' }, props.job.hls_url || 'Waiting for source resolution'),
-      ]),
-      h('div', { class: ['prog', progColor(props.job.status)] }, [
-        h('div', { class: 'prog-bar' }, [h('span', { style: { width: pct() } })]),
-        h('div', { class: 'prog-meta' }, [
-          h('span', { class: 'a' }, pct()),
-          h('span', props.job.status),
-        ]),
-      ]),
-      h('div', { class: 'job-actions' }, [
-        canResume() ? h('button', { class: 'icon-mini', title: 'Resume', onClick: () => emit('act', 'resume', props.job.id) }, '▶') : null,
-        canPause() ? h('button', { class: 'icon-mini', title: 'Pause', onClick: () => emit('act', 'pause', props.job.id) }, 'Ⅱ') : null,
-        h('button', { class: 'icon-mini danger', title: 'Delete', onClick: () => emit('act', 'delete', props.job.id) }, '×'),
-      ]),
-    ])
-  },
-})
+// ── State ─────────────────────────────────────────────────────────────────────
 
 const jobs = ref<PipelineJob[]>([])
+const activeFilter = ref<'all' | 'running' | 'error'>('all')
+const collapsedPkgs = ref<Set<string>>(new Set())
+const collapsedSeasons = ref<Set<string>>(new Set())
+const collapsedEpisodes = ref<Set<string>>(new Set())
 let timer: ReturnType<typeof setInterval>
+
+// ── Computed ──────────────────────────────────────────────────────────────────
 
 const counts = computed(() => ({
   running:   jobs.value.filter(j => j.status === 'running').length,
@@ -164,15 +249,20 @@ const counts = computed(() => ({
   completed: jobs.value.filter(j => j.status === 'completed').length,
 }))
 
+const filteredJobs = computed(() => {
+  if (activeFilter.value === 'running') return jobs.value.filter(j => j.status === 'running')
+  if (activeFilter.value === 'error')   return jobs.value.filter(j => j.status === 'error')
+  return jobs.value
+})
+
 // ── Dedup helpers ──────────────────────────────────────────────────────────────
-// When the same episode is grabbed multiple times (worker + manual, or re-grab
-// after error), keep one job per output_mode — preferring active > done > failed.
+
 function bestJob(a: PipelineJob, b: PipelineJob): PipelineJob {
   const priority: Record<string, number> = { running: 5, queued: 4, completed: 3, paused: 2, error: 1 }
   const pa = priority[a.status] ?? 0
   const pb = priority[b.status] ?? 0
   if (pa !== pb) return pa > pb ? a : b
-  return a.created_at >= b.created_at ? a : b   // newer wins on tie
+  return a.created_at >= b.created_at ? a : b
 }
 
 function deduplicateByMode(items: PipelineJob[]): { kept: PipelineJob[]; hidden: number } {
@@ -184,16 +274,18 @@ function deduplicateByMode(items: PipelineJob[]): { kept: PipelineJob[]; hidden:
   return { kept: [...modeMap.values()], hidden: items.length - modeMap.size }
 }
 
-// Wrap into a single computed so groups + dedupCount are computed together
+// ── Groups ────────────────────────────────────────────────────────────────────
+
 const _groupsResult = computed(() => {
   let hiddenJobs = 0
   const map = new Map<string, PipelineJob[]>()
-  for (const job of jobs.value) {
+  for (const job of filteredJobs.value) {
     const key = `${job.kind}:${job.title}`
     const list = map.get(key) || []
     list.push(job)
     map.set(key, list)
   }
+
   const groups: DownloadGroup[] = [...map.entries()].map(([key, items]) => {
     const first = items[0]
     const kind = first.kind === 'movie' ? 'movie' : 'tv'
@@ -203,17 +295,21 @@ const _groupsResult = computed(() => {
       title: first.title,
       status: aggregateStatus(items),
       count: items.length,
+      avgPct: null,
       jobs: [],
       seasons: [],
       jobIds: items.map(j => j.id),
     }
+
     if (kind === 'movie') {
       const { kept, hidden } = deduplicateByMode(items)
       hiddenJobs += hidden
       group.jobs = sortJobs(kept)
       group.count = kept.length
+      group.avgPct = avgPct(kept)
       return group
     }
+
     const seasonMap = new Map<number, PipelineJob[]>()
     for (const item of items) {
       const season = item.season || 1
@@ -221,6 +317,7 @@ const _groupsResult = computed(() => {
       list.push(item)
       seasonMap.set(season, list)
     }
+
     group.seasons = [...seasonMap.entries()].sort(([a], [b]) => a - b).map(([season, seasonJobs]) => {
       const episodeMap = new Map<number, PipelineJob[]>()
       for (const job of seasonJobs) {
@@ -238,7 +335,7 @@ const _groupsResult = computed(() => {
           jobs: sortJobs(kept),
           status: aggregateStatus(kept),
           progress: Math.round((kept.reduce((sum, job) => sum + job.progress, 0) / Math.max(kept.length, 1)) * 100),
-          jobIds: epJobs.map(j => j.id),   // ALL ids so delete removes every copy
+          jobIds: epJobs.map(j => j.id),
         }
       })
       return {
@@ -249,13 +346,19 @@ const _groupsResult = computed(() => {
         jobIds: seasonJobs.map(j => j.id),
       }
     })
+
+    const allKept = group.seasons.flatMap(s => s.episodes.flatMap(e => e.jobs))
+    group.avgPct = avgPct(allKept)
     return group
   })
+
   return { groups, hiddenJobs }
 })
 
 const downloadGroups = computed(() => _groupsResult.value.groups)
 const hiddenJobsCount = computed(() => _groupsResult.value.hiddenJobs)
+
+// ── Actions ───────────────────────────────────────────────────────────────────
 
 async function load() {
   try { jobs.value = await getPipeline() } catch {}
@@ -277,6 +380,26 @@ async function bulk(action: 'resume_all' | 'pause_all' | 'clear_done') {
   await load()
 }
 
+function togglePkg(key: string) {
+  const s = new Set(collapsedPkgs.value)
+  if (s.has(key)) s.delete(key); else s.add(key)
+  collapsedPkgs.value = s
+}
+
+function toggleSeason(key: string) {
+  const s = new Set(collapsedSeasons.value)
+  if (s.has(key)) s.delete(key); else s.add(key)
+  collapsedSeasons.value = s
+}
+
+function toggleEpisode(key: string) {
+  const s = new Set(collapsedEpisodes.value)
+  if (s.has(key)) s.delete(key); else s.add(key)
+  collapsedEpisodes.value = s
+}
+
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
 function sortJobs(items: PipelineJob[]) {
   return [...items].sort((a, b) => b.created_at - a.created_at)
 }
@@ -290,7 +413,16 @@ function aggregateStatus(items: PipelineJob[]) {
   return items[0]?.status || 'queued'
 }
 
-function statusPill(status: string) {
+function avgPct(items: PipelineJob[]): number {
+  if (!items.length) return 0
+  return Math.round((items.reduce((sum, j) => sum + j.progress, 0) / items.length) * 100)
+}
+
+function pct(job: PipelineJob): number {
+  return Math.round(job.progress * 100)
+}
+
+function statusPill(status: string): string {
   if (status === 'running')   return 'green'
   if (status === 'completed') return 'teal'
   if (status === 'error')     return 'red'
@@ -298,10 +430,47 @@ function statusPill(status: string) {
   return 'gray'
 }
 
-function progColor(status: string) {
+function pkgBarColor(status: string): string {
   if (status === 'error')  return 'red'
   if (status === 'paused') return 'amber'
+  if (status === 'queued' || status === 'completed') return 'gray'
   return ''
+}
+
+function progBarColor(status: string): string {
+  if (status === 'error')  return 'red'
+  if (status === 'paused') return 'amber'
+  if (status === 'queued' || status === 'completed') return 'gray'
+  return ''
+}
+
+function outputModePill(mode: string): string {
+  if (mode === 'strm') return 'teal'
+  return 'blue'
+}
+
+function statusText(job: PipelineJob): string {
+  if (job.error) return job.error
+  if (job.status === 'completed') return 'done'
+  if (job.status === 'paused') return 'paused'
+  if (job.status === 'queued') return 'waiting'
+  if (job.status === 'running') return 'downloading'
+  return job.status
+}
+
+function statusTextClass(status: string): string {
+  if (status === 'running') return 'green'
+  if (status === 'error') return 'red'
+  if (status === 'paused') return 'amber'
+  return ''
+}
+
+function canResume(job: PipelineJob): boolean {
+  return ['paused', 'error', 'queued'].includes(job.status)
+}
+
+function canPause(job: PipelineJob): boolean {
+  return ['running', 'queued'].includes(job.status)
 }
 
 onMounted(() => { load(); timer = setInterval(load, 5000) })
@@ -309,135 +478,23 @@ onUnmounted(() => clearInterval(timer))
 </script>
 
 <style scoped>
-.filter-tag {
-  font-size: 12px; color: var(--text-3); padding: 2px 8px;
+.filter-chip {
+  display: inline-flex; align-items: center; gap: 7px; padding: 6px 11px; border-radius: 7px;
+  background: transparent; border: 1px solid transparent; color: var(--text-2);
+  font: 500 13px/1 var(--font-sans); cursor: pointer; transition: all .12s; user-select: none;
 }
-.filter-tag b { font-weight: 600; color: var(--text-2); margin-left: 3px; }
-.filter-tag.green-v b { color: var(--green); }
-.filter-tag.red-v b   { color: var(--red); }
-.tree-card {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  overflow: hidden;
-}
-.tree-node { border-bottom: 1px solid var(--border); }
-.tree-node:last-child { border-bottom: 0; }
-.tree-node > summary {
-  display: grid;
-  grid-template-columns: 18px auto minmax(180px, 1fr) auto auto auto;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
-  cursor: pointer;
-  list-style: none;
-}
-.tree-node > summary::-webkit-details-marker { display: none; }
-.tree-node > summary:hover { background: var(--surface-2); }
-.season-node > summary,
-.episode-node > summary {
-  grid-template-columns: 18px minmax(160px, 1fr) auto auto;
-  padding: 9px 12px;
-}
-.episode-node > summary {
-  grid-template-columns: 18px minmax(160px, 1fr) auto auto auto auto;
-  padding: 6px 10px;
-}
-.chev::before {
-  content: "›";
-  display: inline-block;
-  color: var(--text-3);
-  transition: transform .12s;
-}
-details[open] > summary .chev::before { transform: rotate(90deg); }
-.media-icon {
-  min-width: 28px;
-  height: 22px;
-  border-radius: 5px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--blue-soft);
-  color: var(--blue);
-  font-size: 11px;
-  font-weight: 800;
-}
-.node-title { font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.node-meta { color: var(--text-3); font-size: 12px; white-space: nowrap; }
-.tree-children {
-  margin-left: 28px;
-  border-left: 1px solid var(--border);
-  padding: 0 12px 10px;
-}
-.compact-children {
-  padding-bottom: 6px;
-}
-.episode-node {
-  border-bottom: 0;
-}
-.episode-node > summary:hover {
-  background: rgba(255,255,255,.025);
-}
-.episode-progress {
-  color: var(--text-3);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  min-width: 38px;
-  text-align: right;
-}
-.job-row {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) minmax(180px, 260px) auto;
-  align-items: center;
-  gap: 14px;
-  padding: 7px 9px;
-  margin-top: 5px;
-  background: rgba(255,255,255,.025);
-  border: 1px solid var(--border);
-  border-radius: 7px;
-}
-.job-main { min-width: 0; display: flex; flex-direction: column; gap: 4px; }
-.job-title { display: flex; align-items: center; gap: 6px; font-weight: 700; font-family: var(--font-mono); font-size: 11px; }
-.job-sub {
-  color: var(--text-3);
-  font-size: 11.5px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.job-tag {
-  color: var(--green);
-  background: var(--green-soft);
-  border: 1px solid rgba(74,222,128,.22);
-  border-radius: 4px;
-  padding: 1px 5px;
-  font-family: var(--font-sans);
-  font-size: 10px;
-}
-.error-text { color: var(--red); }
-.done-text { color: var(--green); }
-.job-actions { display: flex; gap: 5px; justify-content: flex-end; }
-.card-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 9px 14px;
-  border-top: 1px solid var(--border);
-}
-.dedup-note {
-  font-size: 11.5px;
-  color: var(--text-3);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  padding: 2px 8px;
-  white-space: nowrap;
-}
-@media (max-width: 900px) {
-  .tree-node > summary { grid-template-columns: 18px auto minmax(120px, 1fr) auto; }
-  .tree-node > summary .pill { display: none; }
-  .episode-node > summary { grid-template-columns: 18px minmax(120px, 1fr) auto auto; }
-  .job-row { grid-template-columns: 1fr; }
-  .job-actions { justify-content: flex-start; }
+.filter-chip:hover { background: var(--surface-2); color: var(--text); }
+.filter-chip.active { background: var(--surface-2); border-color: var(--border-2); color: var(--text); }
+.filter-chip .n { font-family: var(--font-mono); font-size: 11.5px; font-weight: 600; color: var(--text-3); }
+.filter-chip .n.green { color: var(--green); }
+.filter-chip .n.red   { color: var(--red); }
+
+.leaf-actions { display: flex; gap: 4px; align-items: center; flex-shrink: 0; }
+
+.pkg-foot {
+  padding: 10px 18px;
+  font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3);
+  border-top: 1px solid var(--border); background: var(--bg-2);
+  display: flex; align-items: center; justify-content: space-between;
 }
 </style>

@@ -1,113 +1,169 @@
 <template>
-  <div class="test-page">
+  <div>
     <div class="page-head">
       <div>
-        <h1>Health & Monitor</h1>
-        <p class="sub">Check service health, fake LinkGrabber entries, and trace source resolution from one place.</p>
+        <h1>Health &amp; Monitor</h1>
+        <p class="sub">Service health and a dry-run sandbox to simulate the LinkGrabber → resolve flow without touching your queue.</p>
+      </div>
+      <button class="btn" :disabled="healthRunning" @click="runHealth(true)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        {{ healthRunning ? 'Checking…' : 'Run health check' }}
+      </button>
+    </div>
+
+    <!-- ── Health ── -->
+    <div class="section-h">
+      <div>
+        <h2>Health <span class="num-pill">6 services</span></h2>
+        <p class="desc">Click a tile to re-check a single service.</p>
       </div>
     </div>
 
-    <div class="card health-card">
-      <div class="card-head">
-        <div>
-          <h2>Health</h2>
-          <p class="desc">Current reachability for media services and built-in source APIs.</p>
+    <div class="health-grid">
+      <div
+        v-for="tile in tiles"
+        :key="tile.name"
+        class="health-tile"
+        @click="runSingle(tile.name)"
+      >
+        <div class="health-tile-head">
+          <span class="name">{{ tile.label }}</span>
+          <span :class="['dot', tile.dotClass]"></span>
         </div>
-      </div>
-      <div class="card-body">
-        <div class="test-grid">
-          <div
-            v-for="tile in tiles"
-            :key="tile.name"
-            class="test-tile"
-            @click="runSingle(tile.name)"
-          >
-            <div class="test-tile-head">
-              <span class="name">{{ tile.label }}</span>
-              <span :class="['dot', tile.dotClass]"></span>
-            </div>
-            <span class="desc">
-              <template v-if="tile.status === 'loading'">checking...</template>
-              <template v-else-if="tile.status === 'ok'">{{ tile.url }} · {{ tile.latency }}ms</template>
-              <template v-else-if="tile.status === 'warn'">{{ tile.url }} · {{ tile.latency }}ms</template>
-              <template v-else-if="tile.status === 'error'">{{ tile.message || 'unreachable' }}</template>
-              <template v-else>click to test</template>
-            </span>
-          </div>
-        </div>
+        <span class="desc">
+          <template v-if="tile.status === 'loading'">checking…</template>
+          <template v-else-if="tile.status === 'ok'">{{ tile.urlShort }} · {{ tile.latency }}ms</template>
+          <template v-else-if="tile.status === 'warn'">{{ tile.urlShort }} · {{ tile.latency }}ms (slow)</template>
+          <template v-else-if="tile.status === 'error'">{{ tile.message || 'unreachable' }}</template>
+          <template v-else>click to test</template>
+        </span>
       </div>
     </div>
 
-    <div class="card testing-card">
-      <div class="card-head">
+    <!-- ── Testing sandbox ── -->
+    <div class="section-h" style="margin-top:28px">
+      <div>
+        <h2>Testing sandbox <span class="num-pill">dry-run</span></h2>
+        <p class="desc">Enter a TMDB reference, then simulate the grabber or test each source resolver. Nothing is queued or written to disk.</p>
+      </div>
+    </div>
+
+    <div class="fcard" style="margin-bottom:18px">
+      <div class="fcard-head">
+        <div class="fcard-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>
+        </div>
         <div>
-          <h2>Testing</h2>
-          <p class="desc">Use TMDB metadata and optional overrides to exercise LinkGrabber and source resolution.</p>
+          <h3>Media reference</h3>
+          <p class="desc">Switch to TV Series to enter season / episode.</p>
+        </div>
+        <div style="margin-left:auto">
+          <div class="seg-radio">
+            <button :class="{ active: mediaType === 'movie' }" @click="mediaType = 'movie'">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><line x1="7" y1="4" x2="7" y2="20"/><line x1="17" y1="4" x2="17" y2="20"/></svg>
+              Movie
+            </button>
+            <button :class="{ active: mediaType === 'tv' }" @click="mediaType = 'tv'">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="15" rx="2"/><polyline points="17 2 12 7 7 2"/></svg>
+              TV Series
+            </button>
+          </div>
         </div>
       </div>
-      <div class="card-body">
-        <div class="form-grid">
+      <div class="fcard-body">
+        <div class="form">
           <div class="field">
-            <label>Media type</label>
-            <select v-model="mediaType" class="select">
-              <option value="movie">Movie</option>
-              <option value="tv">TV Series</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>TMDB ID</label>
+            <label>TMDB ID <span class="hint">required</span></label>
             <input v-model="tmdbId" class="input mono" type="number" :placeholder="defaults.tmdbId" />
           </div>
           <div class="field">
-            <label>Title</label>
+            <label>Title <span class="hint">fuzzy match</span></label>
             <input v-model="title" class="input" :placeholder="defaults.title" />
-          </div>
-          <div class="field">
-            <label>Year</label>
-            <input v-model="year" class="input mono" type="number" :placeholder="defaults.year" />
           </div>
           <template v-if="mediaType === 'tv'">
             <div class="field">
-              <label>Season</label>
+              <label>Season <span class="hint">optional</span></label>
               <input v-model="season" class="input mono" type="number" placeholder="all" />
             </div>
             <div class="field">
-              <label>Episode</label>
+              <label>Episode <span class="hint">optional</span></label>
               <input v-model="episode" class="input mono" type="number" placeholder="all" />
             </div>
           </template>
         </div>
-
-        <div class="action-row">
-          <button class="btn" :disabled="testingGrabber" @click="fakeGrabber">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.5.5l3-3a5 5 0 0 0-7-7l-1.7 1.7"/><path d="M14 11a5 5 0 0 0-7.5-.5l-3 3a5 5 0 0 0 7 7l1.7-1.7"/></svg>
-            {{ testingGrabber ? 'Adding...' : 'Test Grabber' }}
-          </button>
-          <button class="btn" :disabled="testingIndexer" @click="testTorznab">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
-            {{ testingIndexer ? 'Testing...' : 'Test Indexer' }}
-          </button>
-          <button class="btn primary" :disabled="resolving" @click="resolveSources">
+      </div>
+      <div class="fcard-foot">
+        <span style="display:inline-flex;align-items:center;gap:6px;font-size:12px">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+          Dry-run · nothing is queued or written to disk
+        </span>
+        <div style="margin-left:auto;display:flex;gap:8px">
+          <button class="btn sm" :disabled="resolving" @click="resolveSources">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-            {{ resolving ? 'Resolving...' : 'Resolve sources' }}
+            {{ resolving ? 'Resolving…' : 'Test all sources' }}
+          </button>
+          <button class="btn primary sm" :disabled="testingIndexer" @click="testTorznab">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg>
+            {{ testingIndexer ? 'Testing…' : 'Test indexer' }}
           </button>
         </div>
+      </div>
+    </div>
 
-        <div class="run-output">
-          <div class="run-output-head">
-            <div>
-              <h3>Run output <span>{{ lastRun ? '· ' + lastRun : '' }}</span></h3>
-              <p class="desc">{{ outputDescription }}</p>
+    <!-- ── Resolve on source ── -->
+    <div class="section-h">
+      <div>
+        <h2>Resolve on source <span class="num-pill">3 sources</span></h2>
+        <p class="desc">Run the resolver pipeline against one source at a time. Useful for diagnosing "No match" errors.</p>
+      </div>
+    </div>
+
+    <div class="fcard" style="margin-bottom:18px">
+      <div class="fcard-body" style="padding:14px 16px">
+        <div
+          v-for="(src, i) in srcTests"
+          :key="src.name"
+          class="src-test"
+        >
+          <div class="src-test-badge">{{ String(i + 1).padStart(2, '0') }}</div>
+          <div class="src-test-meta">
+            <div class="n">
+              {{ src.name }}
+              <span v-if="i === 0" class="pill teal flat">Primary</span>
             </div>
-            <button class="btn ghost sm" @click="clearLog">Clear</button>
+            <div class="u">{{ src.url }}</div>
           </div>
-          <div class="testlog" ref="logEl">
-            <div v-if="!logLines.length" class="l-info">
-              <span class="ts">-</span>No test action has run yet.
-            </div>
-            <div v-for="(line, i) in logLines" :key="i" :class="line.cls">
-              <span class="ts">{{ line.ts }}</span>{{ line.text }}
-            </div>
+          <div class="actions">
+            <span class="result" :class="src.resultClass">{{ src.resultText }}</span>
+            <button class="btn sm" :disabled="src.loading" @click="testSingleSource(src.name)">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+              {{ src.loading ? 'Testing…' : 'Test resolve' }}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Run output ── -->
+    <div class="section-h">
+      <div>
+        <h2>Run output</h2>
+        <p class="desc">Live log from health check + sandbox actions in this session.</p>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn ghost sm" @click="copyLog">Copy</button>
+        <button class="btn ghost sm" @click="clearLog">Clear</button>
+      </div>
+    </div>
+
+    <div class="fcard">
+      <div style="padding:14px 16px">
+        <div class="testlog" ref="logEl">
+          <div v-if="!logLines.length" class="l-info">
+            <span class="ts">–</span>No test action has run yet. Run a health check or use the sandbox above.
+          </div>
+          <div v-for="(line, i) in logLines" :key="i" :class="line.cls">
+            <span class="ts">{{ line.ts }}</span>{{ line.text }}
           </div>
         </div>
       </div>
@@ -116,69 +172,75 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, nextTick, onMounted, computed } from 'vue'
-import { getHealth, sourceTest, testGrabber, testIndexer, type HealthResult, type SourceTestRequest, type SourceResult } from '../api'
+import { ref, reactive, computed, nextTick, onMounted } from 'vue'
+import { getHealth, sourceTest, testIndexer, type HealthResult, type SourceTestRequest, type SourceResult } from '../api'
 
 interface Tile {
-  name: string
-  label: string
-  url: string
+  name: string; label: string; url: string; urlShort: string
   status: 'idle' | 'loading' | 'ok' | 'warn' | 'error' | 'unknown'
-  dotClass: string
-  latency: number | null
-  message: string
+  dotClass: string; latency: number | null; message: string
 }
-
+interface SrcTest {
+  name: string; url: string
+  loading: boolean; resultText: string; resultClass: string
+}
 interface LogLine { cls: string; ts: string; text: string }
 
 const SERVICES: { name: string; label: string }[] = [
-  { name: 'radarr',  label: 'Radarr'  },
-  { name: 'sonarr',  label: 'Sonarr'  },
-  { name: 'jellyfin',label: 'Jellyfin'},
-  { name: 'kkphim',  label: 'kkphim'  },
-  { name: 'ophim',   label: 'ophim'   },
-  { name: 'nguonc',  label: 'nguonc'  },
+  { name: 'radarr',   label: 'Radarr'   },
+  { name: 'sonarr',   label: 'Sonarr'   },
+  { name: 'jellyfin', label: 'Jellyfin' },
+  { name: 'kkphim',   label: 'kkphim'   },
+  { name: 'ophim',    label: 'ophim'    },
+  { name: 'nguonc',   label: 'nguonc'   },
 ]
+
+const SRC_URLS: Record<string, string> = {
+  kkphim: 'https://phimapi.com',
+  ophim:  'https://ophim1.com',
+  nguonc: 'https://phim.nguonc.com',
+}
 
 const tiles = reactive<Tile[]>(
   SERVICES.map(s => ({
-    ...s, url: '', status: 'idle', dotClass: 'gray', latency: null, message: '',
+    ...s, url: '', urlShort: '', status: 'idle', dotClass: 'gray', latency: null, message: '',
   }))
 )
 
-const mediaType = ref<'movie' | 'tv'>('movie')
-const tmdbId = ref('')
-const title = ref('')
-const year = ref('')
-const season = ref('')
-const episode = ref('')
+const srcTests = reactive<SrcTest[]>(
+  ['kkphim', 'ophim', 'nguonc'].map(name => ({
+    name, url: SRC_URLS[name] || '',
+    loading: false, resultText: '· not run yet', resultClass: '',
+  }))
+)
 
-const healthRunning = ref(false)
-const testingGrabber = ref(false)
+const mediaType     = ref<'movie' | 'tv'>('movie')
+const tmdbId        = ref('')
+const title         = ref('')
+const year          = ref('')
+const season        = ref('')
+const episode       = ref('')
+const healthRunning  = ref(false)
 const testingIndexer = ref(false)
-const resolving = ref(false)
-const logLines = ref<LogLine[]>([])
-const lastRun = ref('')
-const outputMode = ref<'idle' | 'grabber' | 'indexer' | 'resolve'>('idle')
-const logEl = ref<HTMLElement | null>(null)
+const resolving      = ref(false)
+const logLines       = ref<LogLine[]>([])
+const logEl          = ref<HTMLElement | null>(null)
 
 const DEFAULTS = {
   movie: { tmdbId: '27205', title: 'Inception', year: '2010' },
-  tv: { tmdbId: '37854', title: 'One Piece', year: '1999' },
+  tv:    { tmdbId: '37854', title: 'One Piece',  year: '1999' },
 } as const
 
 const defaults = computed(() => DEFAULTS[mediaType.value])
-const outputDescription = computed(() => {
-  if (outputMode.value === 'grabber') return 'Test Grabber result and generated fake grab options.'
-  if (outputMode.value === 'indexer') return 'Torznab result that Radarr/Sonarr should receive from Deceptarr.'
-  if (outputMode.value === 'resolve') return 'Resolve Sources result with source URLs and trace lines.'
-  return 'Run Test Grabber, Test Indexer, or Resolve sources to see the matching output here.'
-})
+
+function valueOrDefault(value: string, fallback: string) { return value.trim() || fallback }
+function intVal(value: string): number | undefined {
+  const n = Number(value)
+  return Number.isFinite(n) && value.trim() !== '' ? n : undefined
+}
 
 const payload = computed<SourceTestRequest>(() => {
-  const p: SourceTestRequest = {
-    media_type: mediaType.value,
-  }
+  const p: SourceTestRequest = { media_type: mediaType.value }
   const id = intVal(valueOrDefault(tmdbId.value, defaults.value.tmdbId))
   const yr = intVal(valueOrDefault(year.value, defaults.value.year))
   if (id !== undefined) p.tmdb_id = id
@@ -193,18 +255,7 @@ const payload = computed<SourceTestRequest>(() => {
   return p
 })
 
-function valueOrDefault(value: string, fallback: string) {
-  return value.trim() || fallback
-}
-
-function intVal(value: string): number | undefined {
-  const n = Number(value)
-  return Number.isFinite(n) && value.trim() !== '' ? n : undefined
-}
-
-function now() {
-  return new Date().toTimeString().slice(0, 8)
-}
+function now() { return new Date().toTimeString().slice(0, 8) }
 
 function addLog(cls: string, text: string) {
   logLines.value.push({ cls, ts: now(), text })
@@ -213,38 +264,38 @@ function addLog(cls: string, text: string) {
   })
 }
 
-function clearLog() {
-  logLines.value = []
-  lastRun.value = ''
-  outputMode.value = 'idle'
+function clearLog() { logLines.value = [] }
+
+async function copyLog() {
+  const text = logLines.value.map(l => `[${l.ts}] ${l.text}`).join('\n')
+  try { await navigator.clipboard.writeText(text) } catch {}
 }
 
-function beginOutput(mode: 'grabber' | 'indexer' | 'resolve') {
-  outputMode.value = mode
-  logLines.value = []
-  lastRun.value = ''
+function urlShort(url: string): string {
+  try { return new URL(url).hostname } catch { return url }
 }
 
-function applyResult(name: string, result: HealthResult, log = true) {
+function applyHealthResult(name: string, result: HealthResult, log = true) {
   const tile = tiles.find(t => t.name === name)
   if (!tile) return
   tile.url = result.url || ''
+  tile.urlShort = urlShort(result.url || '')
   tile.latency = result.latency
   tile.message = result.message || ''
   tile.status = result.status
 
   if (result.status === 'ok') {
     tile.dotClass = 'green'
-    if (log) addLog('l-ok', `${name.padEnd(8)} -> ${result.url} · ${result.latency}ms`)
+    if (log) addLog('l-ok', `${name.padEnd(9)} → ${urlShort(result.url || '')} · ${result.latency}ms`)
   } else if (result.status === 'warn') {
     tile.dotClass = 'amber'
-    if (log) addLog('l-warn', `${name.padEnd(8)} -> ${result.url} · ${result.latency}ms`)
+    if (log) addLog('l-warn', `${name.padEnd(9)} → ${urlShort(result.url || '')} · ${result.latency}ms (slow)`)
   } else if (result.status === 'error') {
     tile.dotClass = 'red'
-    if (log) addLog('l-err', `${name.padEnd(8)} -> ${result.message || 'unreachable'}`)
+    if (log) addLog('l-err', `${name.padEnd(9)} → ${result.message || 'unreachable'}`)
   } else {
     tile.dotClass = 'gray'
-    if (log) addLog('l-info', `${name.padEnd(8)} -> not configured`)
+    if (log) addLog('l-info', `${name.padEnd(9)} → not configured`)
   }
 }
 
@@ -252,12 +303,13 @@ async function runHealth(log = false) {
   if (healthRunning.value) return
   healthRunning.value = true
   tiles.forEach(t => { t.status = 'loading'; t.dotClass = 'gray' })
+  if (log) addLog('l-info', '── Health check ──')
   try {
     const results = await getHealth()
-    for (const [name, result] of Object.entries(results)) applyResult(name, result, log)
+    for (const [name, result] of Object.entries(results)) applyHealthResult(name, result, log)
   } catch (e) {
     if (log) addLog('l-err', `Health check failed: ${e}`)
-    tiles.forEach(t => { t.status = 'idle'; t.dotClass = 'gray' })
+    tiles.forEach(t => { if (t.status === 'loading') { t.status = 'error'; t.dotClass = 'red' } })
   } finally {
     healthRunning.value = false
   }
@@ -270,42 +322,21 @@ async function runSingle(name: string) {
   try {
     const results = await getHealth()
     const result = results[name]
-    if (result) applyResult(name, result, false)
+    if (result) applyHealthResult(name, result, false)
   } catch (e) {
-    tile.status = 'error'; tile.dotClass = 'red'
-    tile.message = String(e)
-  }
-}
-
-async function fakeGrabber() {
-  testingGrabber.value = true
-  beginOutput('grabber')
-  addLog('l-info', `Adding fake LinkGrabber entry for ${describePayload()}...`)
-  try {
-    const res = await testGrabber(payload.value)
-    addLog(res.count > 0 ? 'l-ok' : 'l-warn', `LinkGrabber fake event added with ${res.count} grab option(s)`)
-    for (const item of res.results.slice(0, 8)) addLog('l-info', `grab: ${item}`)
-    if (res.results.length > 8) addLog('l-info', `... ${res.results.length - 8} more`)
-    lastRun.value = 'just now'
-  } catch (e) {
-    addLog('l-err', `Test Grabber failed: ${e}`)
-  } finally {
-    testingGrabber.value = false
+    tile.status = 'error'; tile.dotClass = 'red'; tile.message = String(e)
   }
 }
 
 async function testTorznab() {
   testingIndexer.value = true
-  beginOutput('indexer')
-  addLog('l-info', `Testing Torznab indexer for ${describePayload()}...`)
+  addLog('l-info', `── Test Indexer · ${describePayload()} ──`)
   try {
     const res = await testIndexer(payload.value)
-    addLog(res.key_required ? 'l-info' : 'l-warn', 'Torznab API key check: configured key is used for this test')
     addLog('l-info', `request: ${res.url}`)
     addLog(res.count > 0 ? 'l-ok' : 'l-err', `Indexer returned ${res.count} result(s)`)
-    for (const item of res.results.slice(0, 10)) addLog('l-info', `item: ${item}`)
-    if (res.results.length > 10) addLog('l-info', `... ${res.results.length - 10} more`)
-    lastRun.value = 'just now'
+    for (const item of res.results.slice(0, 10)) addLog('l-info', `  ${item}`)
+    if (res.results.length > 10) addLog('l-info', `  … ${res.results.length - 10} more`)
   } catch (e) {
     addLog('l-err', `Test Indexer failed: ${e}`)
   } finally {
@@ -315,20 +346,58 @@ async function testTorznab() {
 
 async function resolveSources() {
   resolving.value = true
-  beginOutput('resolve')
-  addLog('l-info', `Resolving ${describePayload()} on kkphim, ophim, nguonc...`)
+  addLog('l-info', `── Resolve sources · ${describePayload()} ──`)
+  srcTests.forEach(s => { s.loading = true; s.resultText = '… resolving'; s.resultClass = '' })
   try {
     const results = await sourceTest(payload.value)
-    for (const name of ['kkphim', 'ophim', 'nguonc']) {
-      const result = results[name]
-      if (!result) continue
-      logSourceResult(name, result)
+    for (const src of srcTests) {
+      src.loading = false
+      const result = results[src.name]
+      if (result) {
+        applySrcResult(src, result)
+        logSourceResult(src.name, result)
+      } else {
+        src.resultText = '· no result'; src.resultClass = ''
+      }
     }
-    lastRun.value = 'just now'
   } catch (e) {
     addLog('l-err', `Resolve failed: ${e}`)
+    srcTests.forEach(s => { s.loading = false; s.resultText = '· failed'; s.resultClass = 'err' })
   } finally {
     resolving.value = false
+  }
+}
+
+async function testSingleSource(name: string) {
+  const src = srcTests.find(s => s.name === name)
+  if (!src) return
+  src.loading = true; src.resultText = '… resolving'; src.resultClass = ''
+  addLog('l-info', `── Resolve ${name} · ${describePayload()} ──`)
+  try {
+    const results = await sourceTest(payload.value)
+    src.loading = false
+    const result = results[name]
+    if (result) {
+      applySrcResult(src, result)
+      logSourceResult(name, result)
+    } else {
+      src.resultText = '· no result'; src.resultClass = ''
+    }
+  } catch (e) {
+    src.loading = false; src.resultText = '· failed'; src.resultClass = 'err'
+    addLog('l-err', `${name} → ${e}`)
+  }
+}
+
+function applySrcResult(src: SrcTest, result: SourceResult) {
+  if (result.status === 'ok') {
+    const urls = result.urls || (result.url ? [{ url: result.url }] : [])
+    const found = result.episodes ? `${result.found || 0}/${result.total || 0} ep` : `${urls.length || 1} URL(s)`
+    src.resultText = `✓ matched · ${found}`
+    src.resultClass = 'ok'
+  } else {
+    src.resultText = `✗ ${result.message || 'not found'}`
+    src.resultClass = 'err'
   }
 }
 
@@ -336,21 +405,23 @@ function logSourceResult(name: string, result: SourceResult) {
   if (result.status === 'ok') {
     const urls = result.urls || (result.url ? [{ url: result.url }] : [])
     const found = result.episodes ? `${result.found || 0}/${result.total || 0} episode(s)` : `${urls.length || 1} URL(s)`
-    addLog('l-ok', `${name.padEnd(8)} -> ${found}`)
+    addLog('l-ok', `${name.padEnd(9)} → ${found}`)
     for (const hit of urls.slice(0, 6)) {
       const label = [hit.server, hit.name].filter(Boolean).join(' / ')
-      addLog('l-info', `${name.padEnd(8)}    ${label ? label + ' · ' : ''}${hit.url}`)
+      addLog('l-info', `  ${label ? label + ' · ' : ''}${hit.url}`)
     }
     if (result.episodes) {
-      for (const ep of result.episodes.filter(e => e.url).slice(0, 12)) {
-        const prefix = ep.season ? `S${String(ep.season).padStart(2, '0')}E${String(ep.num).padStart(2, '0')}` : `E${String(ep.num).padStart(2, '0')}`
-        addLog('l-info', `${name.padEnd(8)}    ${prefix} · ${ep.url}`)
+      for (const ep of result.episodes.filter((e: { url?: string | null }) => e.url).slice(0, 12)) {
+        const prefix = ep.season
+          ? `S${String(ep.season).padStart(2, '0')}E${String(ep.num).padStart(2, '0')}`
+          : `E${String(ep.num).padStart(2, '0')}`
+        addLog('l-info', `  ${prefix} · ${ep.url}`)
       }
     }
   } else {
-    addLog('l-err', `${name.padEnd(8)} -> ${result.message || 'Not found'}`)
+    addLog('l-err', `${name.padEnd(9)} → ${result.message || 'Not found'}`)
   }
-  for (const line of (result.log || []).slice(0, 18)) addLog('l-trace', `${name.padEnd(8)}    ${line}`)
+  for (const line of (result.log || []).slice(0, 18)) addLog('l-trace', `  ${line}`)
 }
 
 function describePayload() {
@@ -369,101 +440,6 @@ onMounted(() => runHealth(false))
 </script>
 
 <style scoped>
-.test-page > .card + .card {
-  margin-top: 18px;
-}
-.test-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-  gap: 10px;
-}
-.test-tile {
-  min-height: 86px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 13px 14px;
-  cursor: pointer;
-  transition: border-color .12s, background .12s;
-}
-.test-tile:hover { border-color: var(--border-2); background: var(--surface-2); }
-.test-tile-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
-.test-tile .name { font-weight: 700; font-size: 13px; }
-.test-tile .desc {
-  display: block;
-  color: var(--text-3);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  line-height: 1.45;
-  word-break: break-word;
-}
-.dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: var(--text-3); }
-.dot.green { background: var(--green); box-shadow: 0 0 9px var(--green); }
-.dot.amber { background: var(--accent); box-shadow: 0 0 9px var(--accent); }
-.dot.red { background: var(--red); box-shadow: 0 0 9px var(--red); }
-.dot.gray { background: var(--text-3); opacity: .55; }
-.form-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 14px;
-}
-.field { display: flex; flex-direction: column; gap: 7px; min-width: 0; }
-.field label { font-size: 12px; font-weight: 700; color: var(--text-2); }
-.input, .select {
-  height: 38px;
-  background: var(--bg);
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  color: var(--text);
-  padding: 0 11px;
-  font-family: var(--font-sans);
-  font-size: 13px;
-  outline: none;
-}
-.input:focus, .select:focus { border-color: var(--teal); box-shadow: 0 0 0 3px rgba(94,224,189,.12); }
-.action-row { display: flex; flex-wrap: wrap; gap: 10px; margin-top: 18px; }
-.run-output {
-  margin-top: 22px;
-  padding-top: 18px;
-  border-top: 1px solid var(--border);
-}
-.run-output-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-  margin-bottom: 12px;
-}
-.run-output h3 {
-  margin: 0;
-  font-size: 14px;
-}
-.run-output h3 span {
-  color: var(--text-3);
-  font-weight: 500;
-}
-.testlog {
-  height: 340px;
-  overflow: auto;
-  background: #070a0f;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 10px 12px;
-  font-family: var(--font-mono);
-  font-size: 11.5px;
-  line-height: 1.55;
-}
-.testlog > div { white-space: pre-wrap; word-break: break-word; }
-.ts { color: var(--text-3); margin-right: 9px; }
-.l-ok { color: var(--green); }
-.l-warn { color: var(--accent); }
-.l-err { color: var(--red); }
-.l-info { color: var(--text-2); }
-.l-trace { color: var(--text-3); }
-@media (max-width: 900px) {
-  .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
-@media (max-width: 560px) {
-  .form-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-}
+/* Log trace lines */
+:global(.testlog .l-trace) { color: var(--text-3); }
 </style>

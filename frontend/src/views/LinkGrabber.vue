@@ -2,8 +2,8 @@
   <div>
     <div class="page-head">
       <div>
-        <h1>LinkGrabber</h1>
-        <p class="sub">Recent indexer activity grouped by media, season, episode, and source link.</p>
+        <h1>Indexer</h1>
+        <p class="sub">Recent indexer activity grouped by media, season, episode, and source.</p>
       </div>
       <div style="display:flex;gap:8px;align-items:center">
         <button class="btn" @click="load">
@@ -13,138 +13,287 @@
       </div>
     </div>
 
-    <div v-if="!grabEvents.length" class="empty-state">
-      <h3>No activity yet</h3>
-      <p>Start the worker or let Radarr / Sonarr hand queries off automatically once configured.</p>
+    <!-- Toolbar -->
+    <div class="toolbar" style="margin-bottom:18px">
+      <div class="group">
+        <button
+          v-for="f in filters" :key="f.key"
+          :class="['filter-chip', { active: activeFilter === f.key }]"
+          @click="activeFilter = f.key"
+        >
+          {{ f.label }}
+          <span :class="['n', f.countClass]">{{ f.count }}</span>
+        </button>
+      </div>
+      <div class="divider"></div>
+      <span class="spacer"></span>
+      <button class="btn ghost sm" :disabled="!filteredEvents.length" @click="clearFiltered">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/></svg>
+        Clear {{ activeFilter === 'all' ? 'all' : activeFilter === 'nomatch' ? 'no-match' : 'matched' }}
+      </button>
     </div>
 
-    <div v-else class="tree-card">
-      <details v-for="group in mediaGroups" :key="group.key" class="tree-node media-node" open>
-        <summary>
-          <span class="chev"></span>
-          <span class="media-icon">{{ group.kind === 'movie' ? 'M' : 'TV' }}</span>
-          <span class="node-title">{{ group.title }}</span>
-          <span class="node-meta">{{ group.linkCount }} links</span>
-          <span :class="['pill', group.status === 'error' ? 'red' : 'green']">{{ group.status }}</span>
-          <span class="node-time">{{ relTime(group.ts) }}</span>
-          <button class="icon-mini danger" title="Delete grab list" @click.stop="deleteGroup(group)">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-          </button>
-        </summary>
+    <div v-if="!filteredEvents.length" class="empty-state">
+      <template v-if="!allSearchEvents.length">
+        <h3>No activity yet</h3>
+        <p>Start the worker or let Radarr / Sonarr hand queries off automatically once configured.</p>
+      </template>
+      <template v-else-if="activeFilter === 'matched'">
+        <h3>No matched grabs</h3>
+        <p>Searches have come in but none returned grab options. Check the <b style="color:var(--text-2)">No match</b> filter to see what queries failed.</p>
+      </template>
+      <template v-else-if="activeFilter === 'nomatch'">
+        <h3>No failed searches</h3>
+        <p>All queries returned results.</p>
+      </template>
+      <template v-else>
+        <h3>No activity yet</h3>
+        <p>Start the worker or let Radarr / Sonarr hand queries off automatically once configured.</p>
+      </template>
+    </div>
 
-        <div class="tree-children">
+    <div v-else class="pkg-list">
+      <div
+        v-for="group in visibleGroups"
+        :key="group.key"
+        class="pkg"
+        :class="{ collapsed: collapsedPkgs.has(group.key) || group.linkCount === 0 }"
+      >
+        <!-- Package head -->
+        <div class="pkg-head" @click="togglePkg(group.key)">
+          <svg class="pkg-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="6 9 12 15 18 9"/>
+          </svg>
+          <div :class="['pkg-mark', group.kind === 'movie' ? 'movie' : 'tv']">
+            {{ group.kind === 'movie' ? 'M' : 'TV' }}
+          </div>
+          <div class="pkg-title-block">
+            <div class="pkg-title">
+              {{ group.title }}
+              <span v-if="group.tmdbId" class="id">tmdb {{ group.tmdbId }}</span>
+            </div>
+            <div class="pkg-sub">{{ pkgSub(group) }}</div>
+          </div>
+          <div class="pkg-right">
+            <template v-if="group.linkCount > 0">
+              <span>{{ group.linkCount }} links</span>
+              <span class="pill green">matched</span>
+            </template>
+            <span v-else class="pill red">no match</span>
+            <span class="time">{{ relTime(group.ts) }}</span>
+            <button class="icon-mini danger" title="Delete" @click.stop="deleteGroup(group)">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <!-- Package body -->
+        <div v-if="group.linkCount === 0" class="pkg-body pkg-nomatch">
+          <span>No sources matched this query from Radarr / Sonarr.</span>
+        </div>
+        <div v-else class="pkg-body">
+
+          <!-- MOVIE: thead + server rows directly -->
           <template v-if="group.kind === 'movie'">
-            <div v-for="link in group.links" :key="link.key" class="leaf-row">
-              <div class="leaf-main">
-                <span class="leaf-title">{{ link.label }}</span>
-                <span class="leaf-sub">{{ link.title }}</span>
+            <div class="lg-thead-srv">
+              <span>Server</span><span>Download type</span><span>Status</span>
+            </div>
+            <template v-for="srv in group.servers" :key="srv.key">
+              <div
+                class="tree-row server"
+                :class="{ collapsed: collapsedSrvs.has(srv.key) }"
+                @click="toggleSrv(srv.key)"
+              >
+                <svg class="tree-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+                <span class="srv-name">{{ srv.source }} <span class="vcount">({{ srv.variants.length }} variant{{ srv.variants.length !== 1 ? 's' : '' }})</span></span>
+                <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-3)">{{ srvModes(srv) }}</span>
+                <span><span class="pill green flat">ok</span></span>
               </div>
-              <GrabActions :link="link" @grab="grab" />
+              <div class="tree-children">
+                <div v-for="variant in srv.variants" :key="variant.key" class="lg-variant">
+                  <span class="var-dub">
+                    {{ variant.server || srv.source }}
+                    <span v-if="isPrimary(variant, srv)" class="pill teal flat">Primary</span>
+                  </span>
+                  <span class="var-file">{{ variantFilename(group, variant) }}</span>
+                  <span class="var-types">
+                    <button class="btn sm" @click="grab(variant.strmToken, 'strm')">STRM</button>
+                    <button class="btn sm ghost" @click="grab(variant.downloadToken, 'download')">HLS-DL</button>
+                  </span>
+                  <span><span class="pill green flat">ok</span></span>
+                </div>
+              </div>
+            </template>
+            <div class="pkg-foot">
+              {{ group.linkCount }} result(s) — sources: {{ uniqueSources(group) }} · dubs: {{ uniqueDubs(group) }}
             </div>
           </template>
 
+          <!-- TV: season → episode → thead + server rows -->
           <template v-else>
-            <details v-for="season in group.seasons" :key="season.key" class="tree-node season-node" open>
-              <summary>
-                <span class="chev"></span>
-                <span class="node-title">{{ season.label }}</span>
-                <span class="node-meta">{{ season.linkCount }} links</span>
-              </summary>
+            <template v-for="season in group.seasons" :key="season.key">
+              <div
+                class="tree-row season"
+                :class="{ collapsed: collapsedSrvs.has(season.key) }"
+                @click="toggleSrv(season.key)"
+              >
+                <svg class="tree-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <polyline points="6 9 12 15 18 9"/>
+                </svg>
+                <span class="label">{{ season.label }}</span>
+                <div class="meta">
+                  <span>{{ season.linkCount }} links</span>
+                </div>
+              </div>
               <div class="tree-children">
-                <details v-for="episode in season.episodes" :key="episode.key" class="tree-node episode-node" open>
-                  <summary>
-                    <span class="chev"></span>
-                    <span class="node-title">{{ episode.label }}</span>
-                    <span class="node-meta">{{ episode.links.length }} links</span>
-                  </summary>
-                  <div class="tree-children">
-                    <div v-for="link in episode.links" :key="link.key" class="leaf-row">
-                      <div class="leaf-main">
-                        <span class="leaf-title">{{ link.label }}</span>
-                        <span class="leaf-sub">{{ link.title }}</span>
-                      </div>
-                      <GrabActions :link="link" @grab="grab" />
+                <template v-for="episode in season.episodes" :key="episode.key">
+                  <div
+                    class="tree-row episode"
+                    :class="{ collapsed: collapsedSrvs.has(episode.key) }"
+                    @click="toggleSrv(episode.key)"
+                  >
+                    <svg class="tree-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="6 9 12 15 18 9"/>
+                    </svg>
+                    <span class="label">{{ episode.label }}</span>
+                    <div class="meta">
+                      <span>{{ episode.servers.reduce((n, s) => n + s.variants.length, 0) }} links</span>
                     </div>
                   </div>
-                </details>
+                  <div class="tree-children">
+                    <div class="lg-thead-srv in-episode">
+                      <span>Server</span><span>Download type</span><span>Status</span>
+                    </div>
+                    <template v-for="srv in episode.servers" :key="srv.key">
+                      <div
+                        class="tree-row server in-episode"
+                        :class="{ collapsed: collapsedSrvs.has(srv.key) }"
+                        @click.stop="toggleSrv(srv.key)"
+                      >
+                        <svg class="tree-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <polyline points="6 9 12 15 18 9"/>
+                        </svg>
+                        <span class="srv-name">{{ srv.source }} <span class="vcount">({{ srv.variants.length }} variant{{ srv.variants.length !== 1 ? 's' : '' }})</span></span>
+                        <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-3)">{{ srvModes(srv) }}</span>
+                        <span><span class="pill green flat">ok</span></span>
+                      </div>
+                      <div class="tree-children">
+                        <div v-for="variant in srv.variants" :key="variant.key" class="lg-variant in-episode">
+                          <span class="var-dub">
+                            {{ variant.server || srv.source }}
+                            <span v-if="isPrimary(variant, srv)" class="pill teal flat">Primary</span>
+                          </span>
+                          <span class="var-file">{{ variantFilename(group, variant) }}</span>
+                          <span class="var-types">
+                            <button class="btn sm" @click="grab(variant.strmToken, 'strm')">STRM</button>
+                            <button class="btn sm ghost" @click="grab(variant.downloadToken, 'download')">HLS-DL</button>
+                          </span>
+                          <span><span class="pill green flat">ok</span></span>
+                        </div>
+                      </div>
+                    </template>
+                  </div>
+                </template>
               </div>
-            </details>
+            </template>
+            <div class="pkg-foot">
+              {{ group.linkCount }} result(s) — sources: {{ uniqueSources(group) }} · dubs: {{ uniqueDubs(group) }}
+            </div>
           </template>
 
-          <div v-if="group.detail" class="event-detail">{{ group.detail }}</div>
         </div>
-      </details>
+      </div>
 
-      <div class="card-foot">
-        <span style="font-size:12.5px;color:var(--text-3)">{{ deduplicatedEvents.length }} grab lists · {{ grabsCount }} links</span>
-        <span v-if="dupSearchCount > 0" class="dedup-note">{{ dupSearchCount }} duplicate{{ dupSearchCount !== 1 ? 's' : '' }} hidden</span>
+      <!-- Footer summary -->
+      <div class="pkg-foot-bar">
+        <span>{{ visibleGroups.length }} items · {{ grabsCount }} links</span>
+        <span v-if="dupSearchCount > 0" class="pill gray flat">{{ dupSearchCount }} duplicate{{ dupSearchCount !== 1 ? 's' : '' }} hidden</span>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, defineComponent, h, onMounted, onUnmounted, ref, type PropType } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { deleteActivity, getActivity, manualGrab, type ActivityEvent, type GrabToken } from '../api'
 
-interface LinkOption {
+// ── Interfaces ────────────────────────────────────────────────────────────────
+
+interface Variant {
   key: string
-  title: string
-  label: string
+  server: string
   strmToken: string
   downloadToken: string
 }
 
-interface EpisodeNode { key: string; label: string; links: LinkOption[] }
-interface SeasonNode { key: string; label: string; episodes: EpisodeNode[]; linkCount: number }
+interface ServerNode {
+  key: string
+  source: string
+  variants: Variant[]
+}
+
+interface EpisodeNode {
+  key: string
+  label: string
+  servers: ServerNode[]
+}
+
+interface SeasonNode {
+  key: string
+  label: string
+  episodes: EpisodeNode[]
+  linkCount: number
+}
+
 interface MediaNode {
   key: string
   kind: 'movie' | 'tv'
   title: string
+  tmdbId: string | null
   status: string
   detail: string
   ts: number
-  links: LinkOption[]
+  servers: ServerNode[]
   seasons: SeasonNode[]
   linkCount: number
   rawTitle: string
 }
 
-const GrabActions = defineComponent({
-  props: {
-    link: { type: Object as PropType<LinkOption>, required: true },
-  },
-  emits: ['grab'],
-  setup(props, { emit }) {
-    return () => h('div', { class: 'grab-actions' }, [
-      h('button', {
-        class: 'grab-btn',
-        title: 'Create STRM file',
-        onClick: () => emit('grab', props.link.strmToken, 'strm'),
-      }, 'STRM'),
-      h('button', {
-        class: 'grab-btn grab-btn-dl',
-        title: 'Download HLS to media file',
-        onClick: () => emit('grab', props.link.downloadToken, 'hls-dl'),
-      }, 'HLS-DL'),
-    ])
-  },
-})
+// ── State ─────────────────────────────────────────────────────────────────────
 
-const events = ref<ActivityEvent[]>([])
-const router = useRouter()
+const events       = ref<ActivityEvent[]>([])
+const router       = useRouter()
+const collapsedPkgs = ref<Set<string>>(new Set())
+const collapsedSrvs = ref<Set<string>>(new Set())
+const activeFilter  = ref<'all' | 'matched' | 'nomatch'>('matched')
 let timer: ReturnType<typeof setInterval>
 
-const grabEvents = computed(() => events.value.filter(e => e.kind === 'search' && e.grabs.length > 0))
-const grabsCount = computed(() => grabEvents.value.reduce((sum, e) => sum + e.grabs.length, 0))
+// ── Computed ──────────────────────────────────────────────────────────────────
 
-// Dedup: keep only the most recent search event per (kind + title).
-// Radarr/Sonarr re-search the same media on every scan cycle — no need to show N copies.
+const allSearchEvents = computed(() => events.value.filter(e => e.kind === 'search'))
+const matchedEvents   = computed(() => allSearchEvents.value.filter(e => e.grabs.length > 0))
+const noMatchEvents   = computed(() => allSearchEvents.value.filter(e => e.grabs.length === 0))
+
+const filteredEvents = computed(() => {
+  if (activeFilter.value === 'matched')  return matchedEvents.value
+  if (activeFilter.value === 'nomatch')  return noMatchEvents.value
+  return allSearchEvents.value
+})
+
+const grabsCount = computed(() => matchedEvents.value.reduce((sum, e) => sum + e.grabs.length, 0))
+
+const filters = computed(() => [
+  { key: 'all'     as const, label: 'All',      count: allSearchEvents.value.length, countClass: '' },
+  { key: 'matched' as const, label: 'Matched',  count: matchedEvents.value.length,   countClass: 'green' },
+  { key: 'nomatch' as const, label: 'No match', count: noMatchEvents.value.length,   countClass: noMatchEvents.value.length ? 'red' : '' },
+])
+
 const deduplicatedEvents = computed(() => {
   const seen = new Map<string, ActivityEvent>()
-  // iterate newest-first so the first .set() always wins = newest
-  for (const ev of [...grabEvents.value].sort((a, b) => b.ts - a.ts)) {
+  for (const ev of [...filteredEvents.value].sort((a, b) => b.ts - a.ts)) {
     const first = ev.grabs[0]
     const kind = isTvEvent(ev, first) ? 'tv' : 'movie'
     const title = mediaTitle(ev, first).toLowerCase().trim()
@@ -154,8 +303,10 @@ const deduplicatedEvents = computed(() => {
   return [...seen.values()].sort((a, b) => b.ts - a.ts)
 })
 
-const dupSearchCount = computed(() => grabEvents.value.length - deduplicatedEvents.value.length)
-const mediaGroups = computed(() => deduplicatedEvents.value.map(toMediaNode))
+const dupSearchCount = computed(() => filteredEvents.value.length - deduplicatedEvents.value.length)
+const visibleGroups  = computed(() => deduplicatedEvents.value.map(toMediaNode))
+
+// ── Actions ───────────────────────────────────────────────────────────────────
 
 async function load() {
   try { events.value = await getActivity() } catch {}
@@ -171,6 +322,28 @@ async function deleteGroup(group: MediaNode) {
   await load()
 }
 
+async function clearFiltered() {
+  const toDelete = [...filteredEvents.value]
+  for (const ev of toDelete) {
+    try { await deleteActivity(ev.ts, ev.title) } catch {}
+  }
+  await load()
+}
+
+function togglePkg(key: string) {
+  const s = new Set(collapsedPkgs.value)
+  if (s.has(key)) s.delete(key); else s.add(key)
+  collapsedPkgs.value = s
+}
+
+function toggleSrv(key: string) {
+  const s = new Set(collapsedSrvs.value)
+  if (s.has(key)) s.delete(key); else s.add(key)
+  collapsedSrvs.value = s
+}
+
+// ── Build tree ────────────────────────────────────────────────────────────────
+
 function toMediaNode(ev: ActivityEvent): MediaNode {
   const first = ev.grabs[0]
   const kind: 'movie' | 'tv' = isTvEvent(ev, first) ? 'tv' : 'movie'
@@ -179,92 +352,162 @@ function toMediaNode(ev: ActivityEvent): MediaNode {
     key: `${ev.ts}:${ev.title}`,
     kind,
     title,
+    tmdbId: null,
     status: ev.status || 'ok',
     detail: ev.detail,
     ts: ev.ts,
-    links: [],
+    servers: [],
     seasons: [],
     linkCount: ev.grabs.length,
     rawTitle: ev.title,
   }
 
   if (kind === 'movie') {
-    node.links = mergeLinks(ev.grabs)
-    node.linkCount = node.links.length
+    node.servers = toServerNodes(ev.grabs, node.key)
+    node.linkCount = node.servers.reduce((sum, s) => sum + s.variants.length, 0)
     return node
   }
 
+  // TV: group by season
   const seasonMap = new Map<number, GrabToken[]>()
-  for (const grab of ev.grabs) {
-    const season = grab.season || parseSeasonEpisode(grab.title).season || 1
+  for (const g of ev.grabs) {
+    const season = g.season || parseSeasonEpisode(g.title).season || 1
     const list = seasonMap.get(season) || []
-    list.push(grab)
+    list.push(g)
     seasonMap.set(season, list)
   }
+
   node.seasons = [...seasonMap.entries()]
     .sort(([a], [b]) => a - b)
-    .map(([season, grabs]) => {
+    .map(([season, seasonGrabs]) => {
       const episodeMap = new Map<number, GrabToken[]>()
-      for (const grab of grabs) {
-        const parsed = parseSeasonEpisode(grab.title)
-        const ep = grab.episode || parsed.episode || 0
+      for (const g of seasonGrabs) {
+        const ep = g.episode || parseSeasonEpisode(g.title).episode || 0
         const list = episodeMap.get(ep) || []
-        list.push(grab)
+        list.push(g)
         episodeMap.set(ep, list)
       }
-      const episodes = [...episodeMap.entries()]
+      const episodes: EpisodeNode[] = [...episodeMap.entries()]
         .sort(([a], [b]) => a - b)
         .map(([episode, epGrabs]) => ({
           key: `${node.key}:s${season}:e${episode}`,
           label: episode ? `Episode ${episode}` : 'Season pack',
-          links: mergeLinks(epGrabs),
+          servers: toServerNodes(epGrabs, `${node.key}:s${season}:e${episode}`),
         }))
+      const linkCount = episodes.reduce((sum, ep) => sum + ep.servers.reduce((n, s) => n + s.variants.length, 0), 0)
       return {
         key: `${node.key}:s${season}`,
         label: `Season ${season}`,
         episodes,
-        linkCount: episodes.reduce((sum, ep) => sum + ep.links.length, 0),
+        linkCount,
       }
     })
-  node.linkCount = node.seasons.reduce((sum, season) => sum + season.linkCount, 0)
+
+  node.linkCount = node.seasons.reduce((sum, s) => sum + s.linkCount, 0)
   return node
 }
 
-function mergeLinks(grabs: GrabToken[]): LinkOption[] {
-  const map = new Map<string, LinkOption>()
-  for (const grab of grabs) {
-    // Structured grabs (new format) include source + server fields → key by those.
-    // Old-style grabs only have title → key by stripped title so each is distinct.
-    const hasStructured = grab.source !== undefined || grab.server !== undefined
-    const key = hasStructured
-      ? [grab.media_title || '', grab.season ?? '', grab.episode ?? '', grab.source || '', grab.server || ''].join('|')
-      : stripMode(grab.title)
+/**
+ * Group grabs by source → server, merging strm + download tokens per (source, server) pair.
+ */
+function toServerNodes(grabs: GrabToken[], baseKey: string): ServerNode[] {
+  // Map: source → Map<server, { strm, download }>
+  const sourceMap = new Map<string, Map<string, { strm: string; download: string }>>()
 
-    const existing = map.get(key)
-    const mode = grab.output_mode === 'download' ? 'download' : 'strm'
+  for (const g of grabs) {
+    const source = g.source || stripMode(g.title)
+    const server = g.server || ''
+    const mode = g.output_mode === 'download' ? 'download' : 'strm'
+
+    if (!sourceMap.has(source)) sourceMap.set(source, new Map())
+    const varMap = sourceMap.get(source)!
+
+    const existing = varMap.get(server)
     if (existing) {
-      if (mode === 'download') existing.downloadToken = grab.token
-      else existing.strmToken = grab.token
-      continue
+      if (mode === 'download') existing.download = g.token
+      else existing.strm = g.token
+    } else {
+      varMap.set(server, {
+        strm: mode === 'strm' ? g.token : g.token,
+        download: mode === 'download' ? g.token : g.token,
+      })
     }
-    map.set(key, {
-      key,
-      title: grab.title,
-      label: linkLabel(grab),
-      strmToken: grab.token,
-      downloadToken: grab.token,
-    })
   }
-  return [...map.values()]
+
+  return [...sourceMap.entries()].map(([source, varMap], si) => {
+    const variants: Variant[] = [...varMap.entries()].map(([server, tokens], vi) => ({
+      key: `${baseKey}:src${si}:v${vi}`,
+      server,
+      strmToken: tokens.strm,
+      downloadToken: tokens.download,
+    }))
+    return {
+      key: `${baseKey}:src${si}`,
+      source,
+      variants,
+    }
+  })
 }
 
-function linkLabel(grab: GrabToken) {
-  const parts = [grab.source, grab.server].filter(Boolean)
-  return parts.length ? parts.join(' / ') : stripMode(grab.title)
+// ── Helpers ───────────────────────────────────────────────────────────────────
+
+function pkgSub(group: MediaNode): string {
+  const sources = uniqueSources(group)
+  const dubs = uniqueDubs(group)
+  const srcCount = sources.split(', ').filter(Boolean).length
+  const dubCount = dubs.split(', ').filter(Boolean).length
+  const year = new Date(group.ts * 1000).getFullYear()
+  return `${year} · ${srcCount} source${srcCount !== 1 ? 's' : ''} × ${dubCount} dub${dubCount !== 1 ? 's' : ''}`
 }
 
-function stripMode(title: string) {
-  return title.replace(/\s+\[(STRM|HLS-DL)\]\s*$/i, '')
+function uniqueSources(group: MediaNode): string {
+  const all: string[] = []
+  if (group.kind === 'movie') {
+    all.push(...group.servers.map(s => s.source))
+  } else {
+    for (const season of group.seasons)
+      for (const ep of season.episodes)
+        all.push(...ep.servers.map(s => s.source))
+  }
+  return [...new Set(all)].join(', ')
+}
+
+function uniqueDubs(group: MediaNode): string {
+  const all: string[] = []
+  if (group.kind === 'movie') {
+    for (const srv of group.servers)
+      all.push(...srv.variants.map(v => v.server || srv.source))
+  } else {
+    for (const season of group.seasons)
+      for (const ep of season.episodes)
+        for (const srv of ep.servers)
+          all.push(...srv.variants.map(v => v.server || srv.source))
+  }
+  return [...new Set(all.filter(Boolean))].join(', ')
+}
+
+function srvModes(srv: ServerNode): string {
+  const modes: string[] = []
+  if (srv.variants.some(v => v.strmToken)) modes.push('STRM')
+  if (srv.variants.some(v => v.downloadToken)) modes.push('HLS-DL')
+  return modes.join(' · ')
+}
+
+function isPrimary(variant: Variant, srv: ServerNode): boolean {
+  return srv.variants.indexOf(variant) === 0
+}
+
+function variantFilename(group: MediaNode, variant: Variant): string {
+  const dub = variant.server || ''
+  const parts = [group.title, dub ? `[${dub}]` : '', '[STRM]'].filter(Boolean)
+  return parts.join(' ')
+}
+
+function pillColor(status: string): string {
+  if (status === 'ok' || status === 'completed') return 'green'
+  if (status === 'error') return 'red'
+  if (status === 'pending') return 'amber'
+  return 'green'
 }
 
 function mediaTitle(ev: ActivityEvent, first?: GrabToken) {
@@ -284,6 +527,10 @@ function parseSeasonEpisode(title: string) {
   }
 }
 
+function stripMode(title: string) {
+  return title.replace(/\s+\[(STRM|HLS-DL)\]\s*$/i, '')
+}
+
 function relTime(ts: number) {
   const diff = Math.floor(Date.now() / 1000) - ts
   if (diff < 60)    return `${diff}s ago`
@@ -297,132 +544,18 @@ onUnmounted(() => clearInterval(timer))
 </script>
 
 <style scoped>
-.tree-card {
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: var(--surface);
-  overflow: hidden;
+.pkg-nomatch {
+  padding: 11px 18px;
+  font-size: 12.5px; color: var(--text-3); font-family: var(--font-mono);
 }
-.tree-node {
-  border-bottom: 1px solid var(--border);
+.pkg-foot {
+  padding: 10px 18px;
+  font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3);
+  border-top: 1px solid var(--border); background: var(--bg-2);
 }
-.tree-node:last-child { border-bottom: 0; }
-.tree-node > summary {
-  display: grid;
-  grid-template-columns: 18px auto minmax(180px, 1fr) auto auto auto auto;
-  align-items: center;
-  gap: 10px;
-  padding: 12px 14px;
-  cursor: pointer;
-  list-style: none;
-}
-.tree-node > summary::-webkit-details-marker { display: none; }
-.tree-node > summary:hover { background: var(--surface-2); }
-.season-node > summary {
-  grid-template-columns: 18px minmax(160px, 1fr) auto;
-  padding: 9px 12px;
-}
-.episode-node > summary {
-  grid-template-columns: 18px minmax(160px, 1fr) auto;
-  padding: 8px 12px;
-}
-.chev::before {
-  content: "›";
-  display: inline-block;
-  color: var(--text-3);
-  transition: transform .12s;
-}
-details[open] > summary .chev::before { transform: rotate(90deg); }
-.media-icon {
-  min-width: 28px;
-  height: 22px;
-  border-radius: 5px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--blue-soft);
-  color: var(--blue);
-  font-size: 11px;
-  font-weight: 800;
-}
-.node-title { font-weight: 700; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.node-meta, .node-time {
-  color: var(--text-3);
-  font-size: 12px;
-  white-space: nowrap;
-}
-.tree-children {
-  margin-left: 28px;
-  border-left: 1px solid var(--border);
-  padding: 0 12px 10px;
-}
-.leaf-row {
-  display: grid;
-  grid-template-columns: minmax(220px, 1fr) auto;
-  align-items: center;
-  gap: 12px;
-  padding: 8px 10px;
-  margin-top: 7px;
-  background: rgba(255,255,255,.025);
-  border: 1px solid var(--border);
-  border-radius: 7px;
-}
-.leaf-main { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.leaf-title { color: var(--text); font-size: 12.5px; font-weight: 650; }
-.leaf-sub {
-  color: var(--text-3);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.event-detail {
-  color: var(--text-3);
-  font-family: var(--font-mono);
-  font-size: 11px;
-  padding: 8px 10px 0;
-}
-.grab-actions { display: flex; gap: 5px; }
-.grab-btn {
-  min-width: 72px;
-  font-size: 11px;
-  font-weight: 800;
-  background: var(--accent);
-  border: 1px solid rgba(245,166,35,.55);
-  border-radius: 6px;
-  color: #15100a;
-  padding: 6px 10px;
-  cursor: pointer;
-  transition: filter .12s, transform .12s;
-  white-space: nowrap;
-  font-family: var(--font-sans);
-}
-.grab-btn:hover { filter: brightness(1.08); transform: translateY(-1px); }
-.grab-btn-dl {
-  background: var(--surface-2);
-  border-color: var(--border-strong);
-  color: var(--text);
-}
-.grab-btn-dl:hover { background: var(--surface-3); }
-.card-foot {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 9px 14px;
-  border-top: 1px solid var(--border);
-}
-.dedup-note {
-  font-size: 11.5px;
-  color: var(--text-3);
-  background: var(--surface-2);
-  border: 1px solid var(--border);
-  border-radius: 5px;
-  padding: 2px 8px;
-}
-@media (max-width: 900px) {
-  .tree-node > summary { grid-template-columns: 18px auto minmax(120px, 1fr) auto; }
-  .tree-node > summary .pill, .node-time { display: none; }
-  .leaf-row { grid-template-columns: 1fr; }
+.pkg-foot-bar {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 9px 18px; border-top: 1px solid var(--border);
+  font-size: 12px; color: var(--text-3);
 }
 </style>

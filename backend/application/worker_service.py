@@ -29,6 +29,15 @@ class Worker:
         self.state = StateStore(settings.state_path)
         self.jobs = JobStore(settings.state_path)
         self.downloader = HlsDownloader(settings.download_root, settings.ffmpeg_path, settings.ffmpeg_extra_args)
+        self._movie_last_run: float = 0.0
+        self._series_last_run: float = 0.0
+
+    def _tick_interval(self) -> int:
+        """Sleep interval for the main loop — short enough to honour both schedules."""
+        return max(10, min(
+            self.settings.movie_poll_interval_seconds,
+            self.settings.series_poll_interval_seconds,
+        ) // 10)
 
     def run_forever(self) -> None:
         log.info("deceptarr started")
@@ -40,7 +49,7 @@ class Worker:
             except Exception:
                 log.exception("Worker cycle failed")
             elapsed = time.time() - started
-            time.sleep(max(1, self.settings.poll_interval_seconds - elapsed))
+            time.sleep(max(1, self._tick_interval() - elapsed))
 
     def reload_settings(self) -> None:
         next_settings = replace(Settings.load(), run_once=self.settings.run_once)
@@ -62,14 +71,20 @@ class Worker:
         if not self.settings.worker_enabled:
             log.debug("Worker polling disabled (worker_enabled=false)")
             return
+        now = time.time()
+        force = self.settings.run_once  # one-shot mode: skip timing checks
         if self.settings.movie_enabled and self.radarr.enabled:
-            self._process_movies()
+            if force or now - self._movie_last_run >= self.settings.movie_poll_interval_seconds:
+                self._process_movies()
+                self._movie_last_run = now
         if self.settings.series_enabled and self.sonarr.enabled:
-            self._process_episodes()
+            if force or now - self._series_last_run >= self.settings.series_poll_interval_seconds:
+                self._process_episodes()
+                self._series_last_run = now
         self._prune_stale_jobs()
 
     def _process_movies(self) -> None:
-        movies = self.radarr.missing_movies(self.settings.max_items_per_poll)
+        movies = self.radarr.missing_movies(self.settings.movie_max_items_per_poll)
         log.info("Radarr missing movies: %d", len(movies))
         output = OutputService(self.settings)
         for movie in movies:
@@ -111,7 +126,7 @@ class Worker:
             )
 
     def _process_episodes(self) -> None:
-        episodes = self.sonarr.missing_episodes(self.settings.max_items_per_poll)
+        episodes = self.sonarr.missing_episodes(self.settings.series_max_items_per_poll)
         log.info("Sonarr missing episodes: %d", len(episodes))
         output = OutputService(self.settings)
         for episode in episodes:
