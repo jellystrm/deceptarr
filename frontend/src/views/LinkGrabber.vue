@@ -100,10 +100,10 @@
 
           <!-- MOVIE: thead + server rows directly -->
           <template v-if="group.kind === 'movie'">
-            <div class="lg-thead-srv">
+            <div class="lg-thead-srv flat-grid">
               <span>Server</span><span>Variant</span><span>File</span><span>Download type</span><span>Status</span>
             </div>
-            <div v-for="row in groupVariantRows(group)" :key="row.variant.key" class="lg-variant flat-row">
+            <div v-for="row in groupVariantRows(group)" :key="row.variant.key" class="lg-variant flat-row flat-grid">
               <span class="srv-name flat">{{ row.source }}</span>
               <span class="var-dub">
                 {{ variantLabel(row) }}
@@ -140,6 +140,7 @@
               <div class="tree-children">
                 <template v-for="episode in season.episodes" :key="episode.key">
                   <div
+                    v-if="!isSeasonPack(episode)"
                     class="tree-row episode"
                     :class="{ collapsed: collapsedSrvs.has(episode.key) }"
                     @click="toggleSrv(episode.key)"
@@ -153,10 +154,15 @@
                     </div>
                   </div>
                   <div class="tree-children">
-                    <div class="lg-thead-srv in-episode">
+                    <div class="lg-thead-srv flat-grid" :class="{ 'in-episode': !isSeasonPack(episode) }">
                       <span>Server</span><span>Variant</span><span>File</span><span>Download type</span><span>Status</span>
                     </div>
-                    <div v-for="row in episodeVariantRows(episode)" :key="row.variant.key" class="lg-variant flat-row in-episode">
+                    <div
+                      v-for="row in episodeVariantRows(episode)"
+                      :key="row.variant.key"
+                      class="lg-variant flat-row flat-grid"
+                      :class="{ 'in-episode': !isSeasonPack(episode) }"
+                    >
                       <span class="srv-name flat">{{ row.source }}</span>
                       <span class="var-dub">
                         {{ variantLabel(row) }}
@@ -495,6 +501,10 @@ function episodeVariantRows(episode: EpisodeNode): VariantRow[] {
   return episode.servers.flatMap(serverVariantRows)
 }
 
+function isSeasonPack(episode: EpisodeNode): boolean {
+  return episode.label === 'Season pack'
+}
+
 function serverVariantRows(srv: ServerNode): VariantRow[] {
   return srv.variants.map((variant, index) => ({
     source: srv.source,
@@ -579,16 +589,24 @@ onUnmounted(() => clearInterval(timer))
   color: var(--text);
 }
 
-:global(.lg-thead-srv),
-:global(.lg-thead-srv.in-episode),
-:global(.lg-variant.flat-row),
-:global(.lg-variant.flat-row.in-episode) {
-  grid-template-columns: 140px 180px minmax(260px, 1fr) 140px 90px;
-  padding-left: 18px;
+.flat-grid {
+  display: grid !important;
+  grid-template-columns: 140px 180px minmax(260px, 1fr) 140px 90px !important;
+  gap: 14px !important;
+  align-items: center !important;
+  padding-left: 18px !important;
+  padding-right: 18px !important;
 }
 
-:global(.lg-variant.flat-row) {
+.lg-thead-srv.flat-grid {
+  padding-top: 8px !important;
+  padding-bottom: 8px !important;
+}
+
+.lg-variant.flat-row {
   min-height: 38px;
+  padding-top: 6px !important;
+  padding-bottom: 6px !important;
 }
 
 :global(.tree-row.season),
