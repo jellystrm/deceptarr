@@ -86,8 +86,8 @@ def _resolve_ep_fresh(
         return [], []
     wanted = EpisodeWanted(
         sonarr_episode_id=0, series_id=0, series_title=title, episode_title="",
-        year=year, tmdb_id=tmdb_id, tvdb_id=tvdb_id, imdb_id=None,
-        season_number=season, episode_number=ep_num,
+        year=year, tmdb_id=tmdb_id, tvdb_id=tvdb_id, tvdb_episode_id=None,
+        imdb_id=None, season_number=season, episode_number=ep_num,
     )
     hits = src.resolve_episode_all(wanted)
     return hits, list(getattr(src, "_last_log", []))
@@ -200,8 +200,8 @@ async def source_test(request: Request) -> Response:
                 else:
                     wanted = EpisodeWanted(
                         sonarr_episode_id=0, series_id=0, series_title=title, episode_title="",
-                        year=year, tmdb_id=tmdb_id, tvdb_id=tvdb_id, imdb_id=None,
-                        season_number=eff_season, episode_number=eff_episode,
+                        year=year, tmdb_id=tmdb_id, tvdb_id=tvdb_id, tvdb_episode_id=None,
+                        imdb_id=None, season_number=eff_season, episode_number=eff_episode,
                     )
                     hits = source.resolve_episode_all(wanted)  # type: ignore[arg-type]
                 source_log = test_log + list(getattr(source, "_last_log", []))

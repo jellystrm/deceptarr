@@ -41,6 +41,10 @@
           </div>
           <template v-if="mediaType === 'tv'">
             <div class="field">
+              <label>TVDB ID <span class="hint">for ep remap</span></label>
+              <input v-model="tvdbId" class="input mono" type="number" :placeholder="defaults.tvdbId || 'optional'" />
+            </div>
+            <div class="field">
               <label>Season <span class="hint">optional</span></label>
               <input v-model="season" class="input mono" type="number" placeholder="all" />
             </div>
@@ -155,6 +159,7 @@ const srcTests = reactive<SrcTest[]>(
 
 const mediaType     = ref<'movie' | 'tv'>('movie')
 const tmdbId        = ref('')
+const tvdbId        = ref('')
 const title         = ref('')
 const year          = ref('')
 const season        = ref('')
@@ -165,8 +170,8 @@ const logLines       = ref<LogLine[]>([])
 const logEl          = ref<HTMLElement | null>(null)
 
 const DEFAULTS = {
-  movie: { tmdbId: '27205', title: 'Inception', year: '2010' },
-  tv:    { tmdbId: '37854', title: 'One Piece',  year: '1999' },
+  movie: { tmdbId: '27205', tvdbId: '',      title: 'Inception',  year: '2010' },
+  tv:    { tmdbId: '37854', tvdbId: '81797', title: 'One Piece',  year: '1999' },
 } as const
 
 const defaults = computed(() => DEFAULTS[mediaType.value])
@@ -185,6 +190,8 @@ const payload = computed<SourceTestRequest>(() => {
   p.title = valueOrDefault(title.value, defaults.value.title)
   if (yr !== undefined) p.year = yr
   if (mediaType.value === 'tv') {
+    const tvdb = intVal(valueOrDefault(tvdbId.value, defaults.value.tvdbId))
+    if (tvdb !== undefined) p.tvdb_id = tvdb
     const s = intVal(season.value)
     const ep = intVal(episode.value)
     if (s !== undefined) p.season = s
