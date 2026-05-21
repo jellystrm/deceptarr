@@ -94,10 +94,10 @@
 
           <!-- MOVIE -->
           <template v-if="group.kind === 'movie'">
-            <div class="dl-thead-srv">
+            <div class="dl-thead-srv movie-flat">
               <span>File</span><span>Output</span><span>Status</span><span>Progress</span><span>Action</span>
             </div>
-            <div v-for="job in group.jobs" :key="job.id" class="dl-variant">
+            <div v-for="job in group.jobs" :key="job.id" class="dl-variant movie-flat">
               <span class="var-file">{{ job.save_path || job.hls_url || job.title }}</span>
               <span class="var-types">
                 <span :class="['pill flat', outputModePill(job.output_mode)]">{{ job.output_mode.toUpperCase() }}</span>
@@ -603,6 +603,30 @@ onUnmounted(() => clearInterval(timer))
 :global(.dl-variant.in-episode) {
   grid-template-columns: minmax(220px, 1fr) 90px minmax(190px, 320px) 78px 180px;
   padding-left: 18px;
+}
+
+:global(.dl-thead-srv.movie-flat),
+:global(.dl-variant.movie-flat) {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 90px minmax(220px, 360px) 78px 76px !important;
+  gap: 14px;
+  align-items: center;
+  padding: 8px 18px !important;
+  border-bottom: 1px solid var(--border);
+}
+
+:global(.dl-thead-srv.movie-flat) {
+  background: var(--bg-2);
+  color: var(--text-3);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+
+:global(.dl-variant.movie-flat) {
+  min-height: 38px;
 }
 
 :global(.dl-thead-tv),
