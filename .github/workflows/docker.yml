@@ -2,6 +2,16 @@ name: Build & Push Docker Image
 
 on:
   workflow_dispatch:
+    inputs:
+      platform:
+        description: "Docker platform to build"
+        type: choice
+        required: true
+        default: all
+        options:
+          - all
+          - amd64
+          - arm64
 
 permissions:
   contents: read
@@ -11,17 +21,36 @@ env:
   IMAGE_NAME: ghcr.io/jellystrm/deceptarr
 
 jobs:
+  prepare:
+    name: Prepare build matrix
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+
+    steps:
+      - name: Select platforms
+        id: matrix
+        run: |
+          case "${{ github.event.inputs.platform }}" in
+            amd64)
+              matrix='{"include":[{"platform":"linux/amd64","runner_arch":"amd64"}]}'
+              ;;
+            arm64)
+              matrix='{"include":[{"platform":"linux/arm64","runner_arch":"arm64"}]}'
+              ;;
+            all|*)
+              matrix='{"include":[{"platform":"linux/amd64","runner_arch":"amd64"},{"platform":"linux/arm64","runner_arch":"arm64"}]}'
+              ;;
+          esac
+          echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+
   build:
     name: Build (${{ matrix.platform }})
     runs-on: ubuntu-latest
+    needs: [prepare]
     strategy:
       fail-fast: false
-      matrix:
-        include:
-          - platform: linux/amd64
-            runner_arch: amd64
-          - platform: linux/arm64
-            runner_arch: arm64
+      matrix: ${{ fromJSON(needs.prepare.outputs.matrix) }}
 
     steps:
       - name: Checkout
