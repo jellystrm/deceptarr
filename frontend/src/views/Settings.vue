@@ -215,6 +215,23 @@
           </div>
 
         </div>
+
+        <!-- Auto-grab -->
+        <div class="auto-grab-row">
+          <div class="auto-grab-left">
+            <label class="check">
+              <input type="checkbox" v-model="cfg.auto_grab" />
+              <span class="check-box"></span>
+              <span>Auto-grab</span>
+            </label>
+            <p class="hint-text" style="margin:4px 0 0 28px">
+              Khi *arr gửi search request, tự động chọn nguồn tốt nhất theo thứ tự
+              <b style="color:var(--text-2)">Sources</b> và <b style="color:var(--text-2)">Variant priority</b>
+              rồi tải luôn — không cần bấm thủ công trong Indexer.
+            </p>
+          </div>
+          <span v-if="cfg.auto_grab" class="pill green flat" style="flex-shrink:0">Active</span>
+        </div>
       </div>
       <div class="fcard-foot">
         <span v-if="saved"     class="save-ok">✓ Saved</span>
@@ -410,7 +427,7 @@ const sectionBackendId: Record<string, string> = {
   tasks:    'tasks',
   output:   'runtime',
   dlclient: 'downloader',
-  schedule: 'radarr',   // poll_interval lives in radarr section on backend
+  schedule: 'schedule',
 }
 
 const sections = [
@@ -600,6 +617,13 @@ onMounted(async () => {
 .sched-hint  { font-size: 11.5px; color: var(--text-3); }
 
 .sched-off .sched-toggle { opacity: .7; }
+
+/* ── Auto-grab row ── */
+.auto-grab-row {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 16px;
+  margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border);
+}
+.auto-grab-left { flex: 1; }
 
 /* ── Output type selector ── */
 .out-type-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }

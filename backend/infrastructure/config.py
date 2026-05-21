@@ -296,6 +296,7 @@ class Settings:
     torznab_group_sources: bool = False
     source_order: list[str] = field(default_factory=lambda: ["kkphim", "ophim", "nguonc"])
     source_variant_priority: dict = field(default_factory=dict)  # {"kkphim": ["Vietsub", ...], ...}
+    auto_grab: bool = False  # auto-enqueue best match immediately on Torznab search
 
     def resolve_ffmpeg(self) -> str:
         """Return the ffmpeg binary path, auto-detecting if not yet resolved."""
@@ -486,6 +487,7 @@ class Settings:
             torznab_group_sources=bool(_file_value(file_data, "torznab_group_sources", False)),
             source_order=source_order,
             source_variant_priority=source_variant_priority,
+            auto_grab=bool(_file_value(file_data, "auto_grab", False)),
         )
 
         # Persist any auto-detected / auto-generated values so the next start
@@ -542,6 +544,7 @@ class Settings:
             "torznab_group_sources": self.torznab_group_sources,
             "source_order": self.source_order,
             "source_variant_priority": self.source_variant_priority,
+            "auto_grab": self.auto_grab,
         }
 
 

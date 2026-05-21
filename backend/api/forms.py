@@ -125,6 +125,18 @@ def form_to_config(form: dict[str, str], current: Settings) -> dict[str, Any]:
         data["job_detail_retention_hours"] = integer("job_detail_retention_hours", current.job_detail_retention_hours)
         data["worker_enabled"] = "worker_enabled" in form
         data["ui_enabled"] = "ui_enabled" in form
+        data["auto_grab"] = "auto_grab" in form
+        return data
+
+    if section == "schedule":
+        # Schedule tab: per-type polling intervals + auto-grab toggle
+        data["movie_enabled"] = "movie_enabled" in form
+        data["movie_poll_interval_seconds"] = integer("movie_poll_interval_seconds", current.movie_poll_interval_seconds)
+        data["movie_max_items_per_poll"] = integer("movie_max_items_per_poll", current.movie_max_items_per_poll)
+        data["series_enabled"] = "series_enabled" in form
+        data["series_poll_interval_seconds"] = integer("series_poll_interval_seconds", current.series_poll_interval_seconds)
+        data["series_max_items_per_poll"] = integer("series_max_items_per_poll", current.series_max_items_per_poll)
+        data["auto_grab"] = "auto_grab" in form
         return data
 
     if section == "sources":

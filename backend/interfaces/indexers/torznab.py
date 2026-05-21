@@ -9,7 +9,7 @@ from html import escape as xml_escape
 
 from backend.adapters.tmdb import TmdbClient
 from backend.adapters.tvmaze import TVMazeClient
-from backend.application.grab_service import encode_release
+from backend.application.grab_service import encode_release, enqueue_from_url
 from backend.domain.models import EpisodeWanted, GatewayRelease, MovieWanted, OutputMode
 from backend.infrastructure.activity import ActivityLog
 from backend.infrastructure.config import Settings
@@ -197,6 +197,14 @@ def search_response(settings: Settings, query: dict[str, list[str]]) -> str:
                 url=query_url,
                 grabs=result_grabs,
             )
+            # Auto-grab: immediately enqueue best match if enabled and results found
+            if settings.auto_grab and result_grabs:
+                threading.Thread(
+                    target=_auto_enqueue_best,
+                    args=(settings, result_grabs),
+                    name="deceptarr-auto-grab",
+                    daemon=True,
+                ).start()
     items = "\n".join(_release_item(settings, release) for release in releases)
     return f"""<?xml version="1.0" encoding="UTF-8"?>
 <rss version="2.0" xmlns:torznab="http://torznab.com/schemas/2015/feed">
@@ -206,6 +214,71 @@ def search_response(settings: Settings, query: dict[str, list[str]]) -> str:
     {items}
   </channel>
 </rss>"""
+
+
+_DEFAULT_VARIANTS = ["Vietsub", "Lồng tiếng", "Thuyết minh"]
+
+import logging as _logging
+_auto_log = _logging.getLogger(__name__ + ".auto_grab")
+
+
+def _auto_enqueue_best(settings: Settings, grabs: list[dict]) -> None:
+    """Select the highest-priority grab token and enqueue it immediately.
+
+    Selection order:
+      1. Iterate sources in ``settings.source_order`` (user-defined priority).
+      2. Within each source, prefer variants in ``settings.source_variant_priority[source]``
+         (e.g. Vietsub → Lồng tiếng → Thuyết minh).
+      3. Among matching variants, prefer the configured ``default_output_mode``
+         (strm / download); fall back to any mode if not found.
+    """
+    preferred_mode = settings.default_output_mode
+
+    best_token: str | None = None
+
+    for source_name in settings.source_order:
+        variant_order = (
+            settings.source_variant_priority.get(source_name)
+            or _DEFAULT_VARIANTS
+        )
+
+        source_grabs = [g for g in grabs if g.get("source") == source_name]
+        if not source_grabs:
+            continue
+
+        # Prefer configured output mode; fall back to all grabs from this source
+        mode_grabs = [g for g in source_grabs if g.get("output_mode") == preferred_mode]
+        candidates = mode_grabs if mode_grabs else source_grabs
+
+        found: dict | None = None
+        for preferred_variant in variant_order:
+            for grab in candidates:
+                server = (grab.get("server") or "").strip()
+                # Empty server means source doesn't label its variants — accept it
+                if not server or server.lower() == preferred_variant.lower():
+                    found = grab
+                    break
+            if found:
+                break
+
+        # No variant match — just take the first candidate from this source
+        if found is None and candidates:
+            found = candidates[0]
+
+        if found:
+            best_token = found.get("token")
+            break
+
+    if not best_token:
+        _auto_log.debug("auto_grab: no suitable token found in %d grabs", len(grabs))
+        return
+
+    try:
+        grab_url = f"{settings.public_base_url}/grab/{best_token}"
+        enqueue_from_url(settings, grab_url)
+        _auto_log.info("auto_grab: enqueued token %s…", best_token[:32])
+    except Exception:
+        _auto_log.exception("auto_grab: enqueue failed")
 
 
 def build_releases(settings: Settings, query: dict[str, list[str]]) -> list[GatewayRelease]:
