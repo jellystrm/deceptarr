@@ -63,6 +63,22 @@ class TestDelete:
         assert JobStore(settings.state_path).get("job-a").status == "deleted"
         assert JobStore(settings.state_path).get("job-b").status == "deleted"
 
+    def test_delete_files_removes_saved_output(self, settings, tmp_path):
+        save_path = tmp_path / "Avengers (2012).strm"
+        save_path.write_text("https://example.test/index.m3u8", encoding="utf-8")
+        store = JobStore(settings.state_path)
+        store.upsert(
+            GatewayJob(
+                job_id="job-file", release=_release(), status="completed",
+                progress=1.0, created_at=1, updated_at=1, save_path=str(save_path),
+            )
+        )
+
+        qbittorrent.delete(settings, "job-file", delete_files=True)
+
+        assert not save_path.exists()
+        assert JobStore(settings.state_path).get("job-file").status == "deleted"
+
 
 class TestTorrentInfo:
     def test_generic_movie_category_is_reported_as_radarr(self, settings):

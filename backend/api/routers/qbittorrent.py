@@ -17,6 +17,10 @@ router = APIRouter(prefix="/api/v2")
 _OK = PlainTextResponse("Ok.\n")
 
 
+def _truthy(value: str | None) -> bool:
+    return (value or "").lower() in {"true", "1", "yes", "on"}
+
+
 @router.get("/app/version")
 def app_version() -> PlainTextResponse:
     return PlainTextResponse("4.6.0\n")
@@ -169,7 +173,8 @@ async def torrents_add(request: Request) -> Response:
 async def torrents_delete(request: Request) -> PlainTextResponse:
     body = await request.body()
     form = read_urlencoded(body)
-    qbittorrent.delete(Settings.load(), form.get("hashes", ""))
+    delete_files = _truthy(form.get("deleteFiles") or form.get("delete_files"))
+    qbittorrent.delete(Settings.load(), form.get("hashes", ""), delete_files=delete_files)
     return _OK
 
 

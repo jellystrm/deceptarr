@@ -62,9 +62,6 @@
       >
         <!-- Package head -->
         <div class="pkg-head" @click="togglePkg(group.key)">
-          <svg class="pkg-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <polyline points="6 9 12 15 18 9"/>
-          </svg>
           <div :class="['pkg-mark', group.kind === 'movie' ? 'movie' : 'tv']">
             {{ group.kind === 'movie' ? 'M' : 'TV' }}
           </div>
@@ -76,7 +73,14 @@
             <span>{{ group.count }} tasks</span>
             <span :class="['pill', statusPill(group.status)]">{{ group.status }}</span>
             <span v-if="group.avgPct !== null" style="font-family:var(--font-mono);font-size:11px;">{{ group.avgPct }}%</span>
-            <button class="icon-mini danger" title="Delete media tasks" @click.stop="deleteJobs(group.jobIds)">✕</button>
+            <button v-if="canPauseAny(groupJobs(group))" class="row-action" title="Pause all media tasks" @click.stop="pauseJobs(group.jobIds)">Pause all</button>
+            <button v-else-if="canResumeAny(groupJobs(group))" class="row-action" title="Resume all media tasks" @click.stop="resumeJobs(group.jobIds)">Resume all</button>
+            <button class="row-action danger" title="Remove all media tasks" @click.stop="removeJobs(group.jobIds)">Remove all</button>
+            <button class="icon-mini" :title="collapsedPkgs.has(group.key) ? 'Expand' : 'Collapse'" @click.stop="togglePkg(group.key)">
+              <svg class="pkg-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="6 9 12 15 18 9"/>
+              </svg>
+            </button>
           </div>
         </div>
 
@@ -99,21 +103,18 @@
                 <span :class="['pill flat', outputModePill(job.output_mode)]">{{ job.output_mode.toUpperCase() }}</span>
               </span>
               <span>
-                <span :class="['pill', statusPill(job.status)]">{{ job.status }}</span>
+                <span class="status-cell">
+                  <span :class="['pill', statusPill(job.status)]">{{ job.status }}</span>
+                  <span v-if="job.error" class="status-error">{{ job.error }}</span>
+                </span>
               </span>
-              <div class="var-prog">
-                <div :class="['var-prog-bar', progBarColor(job.status)]">
-                  <span :style="{ width: pct(job) + '%' }"></span>
-                </div>
-                <div class="var-prog-meta">
-                  <span class="a">{{ pct(job) }}%</span>
-                  <span :class="statusTextClass(job.status)">{{ statusText(job) }}</span>
-                </div>
+              <div class="var-prog pct-only">
+                {{ pct(job) }}%
               </div>
               <span class="leaf-actions">
-                <button v-if="canResume(job)" class="icon-mini" title="Resume" @click="act('resume', job.id)">▶</button>
-                <button v-if="canPause(job)" class="icon-mini" title="Pause" @click="act('pause', job.id)">Ⅱ</button>
-                <button class="icon-mini danger" title="Delete" @click="act('delete', job.id)">×</button>
+                <button v-if="canPause(job)" class="row-action" title="Pause" @click="act('pause', job.id)">Pause</button>
+                <button v-else-if="canResume(job)" class="row-action" title="Resume" @click="act('resume', job.id)">Resume</button>
+                <button class="row-action danger" title="Remove" @click="removeJobs([job.id])">Remove</button>
               </span>
             </div>
           </template>
@@ -126,14 +127,16 @@
                 :class="{ collapsed: collapsedSeasons.has(season.key) }"
                 @click="toggleSeason(season.key)"
               >
-                <svg class="tree-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                  <polyline points="6 9 12 15 18 9"/>
-                </svg>
                 <span class="label">{{ season.label }}</span>
                 <div class="meta">
                   <span>{{ season.count }} tasks</span>
-                  <button class="icon-mini danger" title="Delete season tasks" @click.stop="deleteJobs(season.jobIds)">
-                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  <button v-if="canPauseAny(seasonJobs(season))" class="row-action" title="Pause season tasks" @click.stop="pauseJobs(season.jobIds)">Pause all</button>
+                  <button v-else-if="canResumeAny(seasonJobs(season))" class="row-action" title="Resume season tasks" @click.stop="resumeJobs(season.jobIds)">Resume all</button>
+                  <button class="row-action danger" title="Remove season tasks" @click.stop="removeJobs(season.jobIds)">Remove all</button>
+                  <button class="icon-mini" :title="collapsedSeasons.has(season.key) ? 'Expand' : 'Collapse'" @click.stop="toggleSeason(season.key)">
+                    <svg class="tree-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                      <polyline points="6 9 12 15 18 9"/>
+                    </svg>
                   </button>
                 </div>
               </div>
@@ -144,15 +147,17 @@
                     :class="{ collapsed: collapsedEpisodes.has(episode.key) }"
                     @click="toggleEpisode(episode.key)"
                   >
-                    <svg class="tree-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                      <polyline points="6 9 12 15 18 9"/>
-                    </svg>
                     <span class="label">{{ episode.label }}</span>
                     <div class="meta">
                       <span :class="['pill', statusPill(episode.status)]">{{ episode.status }}</span>
                       <span style="font-family:var(--font-mono);font-size:11px;color:var(--text-3)">{{ episode.progress }}%</span>
-                      <button class="icon-mini danger" title="Delete episode tasks" @click.stop="deleteJobs(episode.jobIds)">
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                      <button v-if="canPauseAny(episode.jobs)" class="row-action" title="Pause episode tasks" @click.stop="pauseJobs(episode.jobIds)">Pause all</button>
+                      <button v-else-if="canResumeAny(episode.jobs)" class="row-action" title="Resume episode tasks" @click.stop="resumeJobs(episode.jobIds)">Resume all</button>
+                      <button class="row-action danger" title="Remove episode tasks" @click.stop="removeJobs(episode.jobIds)">Remove all</button>
+                      <button class="icon-mini" :title="collapsedEpisodes.has(episode.key) ? 'Expand' : 'Collapse'" @click.stop="toggleEpisode(episode.key)">
+                        <svg class="tree-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                          <polyline points="6 9 12 15 18 9"/>
+                        </svg>
                       </button>
                     </div>
                   </div>
@@ -166,21 +171,18 @@
                         <span :class="['pill flat', outputModePill(job.output_mode)]">{{ job.output_mode.toUpperCase() }}</span>
                       </span>
                       <span>
-                        <span :class="['pill', statusPill(job.status)]">{{ job.status }}</span>
+                        <span class="status-cell">
+                          <span :class="['pill', statusPill(job.status)]">{{ job.status }}</span>
+                          <span v-if="job.error" class="status-error">{{ job.error }}</span>
+                        </span>
                       </span>
-                      <div class="var-prog">
-                        <div :class="['var-prog-bar', progBarColor(job.status)]">
-                          <span :style="{ width: pct(job) + '%' }"></span>
-                        </div>
-                        <div class="var-prog-meta">
-                          <span class="a">{{ pct(job) }}%</span>
-                          <span :class="statusTextClass(job.status)">{{ statusText(job) }}</span>
-                        </div>
+                      <div class="var-prog pct-only">
+                        {{ pct(job) }}%
                       </div>
                       <span class="leaf-actions">
-                        <button v-if="canResume(job)" class="icon-mini" title="Resume" @click="act('resume', job.id)">▶</button>
-                        <button v-if="canPause(job)" class="icon-mini" title="Pause" @click="act('pause', job.id)">Ⅱ</button>
-                        <button class="icon-mini danger" title="Delete" @click="act('delete', job.id)">×</button>
+                        <button v-if="canPause(job)" class="row-action" title="Pause" @click="act('pause', job.id)">Pause</button>
+                        <button v-else-if="canResume(job)" class="row-action" title="Resume" @click="act('resume', job.id)">Resume</button>
+                        <button class="row-action danger" title="Remove" @click="removeJobs([job.id])">Remove</button>
                       </span>
                     </div>
                   </div>
@@ -376,13 +378,32 @@ async function load() {
 }
 
 async function act(action: 'resume' | 'pause' | 'delete', id: string) {
+  if (action === 'delete') {
+    await removeJobs([id])
+    return
+  }
   await jobAction(action, id)
   await load()
 }
 
-async function deleteJobs(ids: string[]) {
+async function resumeJobs(ids: string[]) {
   if (!ids.length) return
-  await jobAction('delete', ids.join(','))
+  await jobAction('resume', ids.join(','))
+  await load()
+}
+
+async function pauseJobs(ids: string[]) {
+  if (!ids.length) return
+  await jobAction('pause', ids.join(','))
+  await load()
+}
+
+async function removeJobs(ids: string[]) {
+  if (!ids.length) return
+  const noun = ids.length === 1 ? 'task' : 'tasks'
+  if (!window.confirm(`Remove ${ids.length} ${noun} from the queue?`)) return
+  const deleteFiles = window.confirm('Also delete completed output file(s) from disk?')
+  await jobAction('delete', ids.join(','), { deleteFiles })
   await load()
 }
 
@@ -461,32 +482,9 @@ function pkgBarColor(status: string): string {
   return ''
 }
 
-function progBarColor(status: string): string {
-  if (status === 'error')  return 'red'
-  if (status === 'paused') return 'amber'
-  if (status === 'queued' || status === 'completed') return 'gray'
-  return ''
-}
-
 function outputModePill(mode: string): string {
   if (mode === 'strm') return 'teal'
   return 'blue'
-}
-
-function statusText(job: PipelineJob): string {
-  if (job.error) return job.error
-  if (job.status === 'completed') return 'done'
-  if (job.status === 'paused') return 'paused'
-  if (job.status === 'queued') return 'waiting'
-  if (job.status === 'running') return 'downloading'
-  return job.status
-}
-
-function statusTextClass(status: string): string {
-  if (status === 'running') return 'green'
-  if (status === 'error') return 'red'
-  if (status === 'paused') return 'amber'
-  return ''
 }
 
 function canResume(job: PipelineJob): boolean {
@@ -495,6 +493,23 @@ function canResume(job: PipelineJob): boolean {
 
 function canPause(job: PipelineJob): boolean {
   return ['running', 'queued'].includes(job.status)
+}
+
+function canResumeAny(items: PipelineJob[]): boolean {
+  return items.some(canResume)
+}
+
+function canPauseAny(items: PipelineJob[]): boolean {
+  return items.some(canPause)
+}
+
+function seasonJobs(season: SeasonGroup): PipelineJob[] {
+  return season.episodes.flatMap(episode => episode.jobs)
+}
+
+function groupJobs(group: DownloadGroup): PipelineJob[] {
+  if (group.kind === 'movie') return group.jobs
+  return group.seasons.flatMap(seasonJobs)
 }
 
 onMounted(() => { load(); timer = setInterval(load, 5000) })
@@ -515,10 +530,89 @@ onUnmounted(() => clearInterval(timer))
 
 .leaf-actions { display: flex; gap: 4px; align-items: center; flex-shrink: 0; }
 
+.row-action {
+  height: 28px;
+  padding: 0 10px;
+  border-radius: 7px;
+  border: 1px solid var(--border-2);
+  background: var(--surface-2);
+  color: var(--text);
+  font: 600 12px/1 var(--font-sans);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color .12s, background .12s, color .12s;
+}
+.row-action:hover {
+  border-color: var(--blue-line);
+  background: var(--blue-soft);
+  color: #dbeafe;
+}
+.row-action.danger:hover {
+  border-color: rgba(255,107,122,.45);
+  background: rgba(255,107,122,.12);
+  color: #ffd6dc;
+}
+
+.status-cell {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.status-error {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--red);
+  font-family: var(--font-mono);
+  font-size: 11px;
+}
+
+.pct-only {
+  justify-content: center;
+  color: var(--text-2);
+  font-family: var(--font-mono);
+  font-size: 11.5px;
+}
+
 .pkg-foot {
   padding: 10px 18px;
   font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3);
   border-top: 1px solid var(--border); background: var(--bg-2);
   display: flex; align-items: center; justify-content: space-between;
+}
+
+:global(.pkg-head) {
+  padding: 12px 14px 12px 18px;
+}
+
+:global(.pkg-right) {
+  gap: 8px;
+}
+
+:global(.pkg-right .icon-mini .pkg-chev),
+:global(.tree-row .meta .icon-mini .tree-chev) {
+  width: 14px;
+  height: 14px;
+}
+
+:global(.tree-row.season),
+:global(.tree-row.episode) {
+  padding-left: 18px;
+}
+
+:global(.dl-thead-srv),
+:global(.dl-thead-srv.in-episode),
+:global(.dl-variant),
+:global(.dl-variant.in-episode) {
+  grid-template-columns: minmax(220px, 1fr) 90px minmax(190px, 320px) 78px 180px;
+  padding-left: 18px;
+}
+
+:global(.dl-variant .var-prog.pct-only) {
+  display: block;
+  min-width: auto;
 }
 </style>

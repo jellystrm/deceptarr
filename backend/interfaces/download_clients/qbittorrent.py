@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import threading
 import time
 from typing import Any
@@ -53,11 +54,16 @@ def pause(settings: Settings, hashes: str, paused: bool) -> None:
             store.update(job_id, paused=False)
 
 
-def delete(settings: Settings, hashes: str) -> None:
+def delete(settings: Settings, hashes: str, delete_files: bool = False) -> None:
     store = JobStore(settings.state_path)
     for job_id in _hashes(settings, hashes):
         job = store.get(job_id)
         if job:
+            if delete_files and job.save_path and os.path.exists(job.save_path):
+                try:
+                    os.remove(job.save_path)
+                except IsADirectoryError:
+                    pass
             store.update(job_id, status="deleted", progress=0.0)
 
 

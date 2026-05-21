@@ -152,8 +152,16 @@ export const testIndexer     = (p: SourceTestRequest) => post<{ status: string; 
 export const torznabSearch   = (p: URLSearchParams)   => fetch('/torznab/api?' + p).then(r => r.text())
 export const saveSettings    = (data: Record<string, unknown>) => post<{ status: string }>('/api/settings', data)
 
-export async function jobAction(action: 'resume' | 'pause' | 'delete', id: string): Promise<void> {
-  await postForm('/tasks/action', { action, hashes: id })
+export async function jobAction(
+  action: 'resume' | 'pause' | 'delete',
+  id: string,
+  options: { deleteFiles?: boolean } = {},
+): Promise<void> {
+  const form: Record<string, string> = { action, hashes: id }
+  if (action === 'delete' && options.deleteFiles !== undefined) {
+    form.delete_files = options.deleteFiles ? 'true' : 'false'
+  }
+  await postForm('/tasks/action', form)
 }
 
 export async function bulkAction(action: 'resume_all' | 'pause_all' | 'clear_done'): Promise<void> {

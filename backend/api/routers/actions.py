@@ -29,6 +29,10 @@ def _read_form(body: bytes, content_type: str) -> dict[str, str]:
     return read_urlencoded(body)
 
 
+def _truthy(value: str | None) -> bool:
+    return (value or "").lower() in {"true", "1", "yes", "on"}
+
+
 @router.post("/save")
 async def save(request: Request) -> RedirectResponse:
     body = await request.body()
@@ -101,7 +105,7 @@ async def tasks_action(request: Request) -> Response:
     elif action == "pause":
         qbittorrent.pause(settings, hashes, True)
     elif action == "delete":
-        qbittorrent.delete(settings, hashes)
+        qbittorrent.delete(settings, hashes, delete_files=_truthy(form.get("delete_files")))
     accept = request.headers.get("accept", "")
     if "text/html" in accept:
         return RedirectResponse("/", status_code=303)
