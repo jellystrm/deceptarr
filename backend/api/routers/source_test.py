@@ -28,7 +28,13 @@ def _season_ep_count(tmdb_id: int | None, season: int, settings: Any) -> int | N
     return None
 
 
-def _season_plan(tmdb_id: int | None, season: int | None, episode: int | None, settings: Any) -> tuple[list[tuple[int, list[int]]], list[str]]:
+def _season_plan(
+    tmdb_id: int | None,
+    tvdb_id: int | None,
+    season: int | None,
+    episode: int | None,
+    settings: Any,
+) -> tuple[list[tuple[int, list[int]]], list[str]]:
     notes: list[str] = []
     info = None
     if tmdb_id and settings.tmdb_api_key:
@@ -38,13 +44,41 @@ def _season_plan(tmdb_id: int | None, season: int | None, episode: int | None, s
         except Exception:
             info = None
 
+    # Fetch TVMaze series info when tvdb_id is available.
+    # TVMaze mirrors TVDB numbering (including year-based seasons like One Piece
+    # S1999, S2000 … S2026).  We prefer TVMaze over TMDB for the scan plan when
+    # the show uses year-based seasons — passing those season numbers to the sources
+    # lets the _year_based path in phimapi resolve episodes via absolute-ep lookup.
+    tvmaze_info = None
+    if tvdb_id:
+        from backend.adapters.tvmaze import TVMazeClient
+        try:
+            tvmaze_info = TVMazeClient().get_series_info(tvdb_id)
+            if not tvmaze_info.seasons:
+                tvmaze_info = None
+        except Exception:
+            pass
+
+    _tvmaze_year_based = (
+        tvmaze_info is not None
+        and any(s.season_number > 1900 for s in tvmaze_info.seasons)
+    )
+
     if season is None:
-        season_numbers = [s.season_number for s in (getattr(info, "seasons", None) or []) if s.season_number > 0]
-        if not season_numbers:
-            season_numbers = [1]
-            notes.append("No season selected and TMDB season list unavailable; scanning season 1 only")
+        if _tvmaze_year_based:
+            # Use TVDB year-based seasons from TVMaze so that the source resolver
+            # receives the correct season numbers and can use _expected_abs matching.
+            season_numbers = [s.season_number for s in tvmaze_info.seasons]  # type: ignore[union-attr]
+            notes.append(
+                f"Using TVMaze TVDB seasons (year-based); scanning {len(season_numbers)} season(s)"
+            )
         else:
-            notes.append(f"No season selected; scanning {len(season_numbers)} season(s)")
+            season_numbers = [s.season_number for s in (getattr(info, "seasons", None) or []) if s.season_number > 0]
+            if not season_numbers:
+                season_numbers = [1]
+                notes.append("No season selected and TMDB season list unavailable; scanning season 1 only")
+            else:
+                notes.append(f"No season selected; scanning {len(season_numbers)} season(s)")
     else:
         season_numbers = [season]
 
@@ -56,7 +90,13 @@ def _season_plan(tmdb_id: int | None, season: int | None, episode: int | None, s
             eps = [episode]
         else:
             count = None
-            if info:
+            # Prefer TVMaze episode count (TVDB-aligned) when available
+            if tvmaze_info:
+                for s in tvmaze_info.seasons:
+                    if s.season_number == season_num:
+                        count = s.episode_count
+                        break
+            if count is None and info:
                 for s in info.seasons:
                     if s.season_number == season_num:
                         count = s.episode_count
@@ -159,7 +199,7 @@ def _run_source_test(params: dict[str, Any]) -> dict[str, dict]:
     results: dict[str, dict] = {}
 
     if scan_mode:
-        plan, plan_notes = _season_plan(tmdb_id, season, episode, settings)
+        plan, plan_notes = _season_plan(tmdb_id, tvdb_id, season, episode, settings)
         test_log.extend(plan_notes)
         test_log.append(
             "Scanning "
