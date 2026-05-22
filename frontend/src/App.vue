@@ -874,13 +874,13 @@ body {
 .tree-row .tree-chev { width: 14px; height: 14px; color: var(--text-3); transition: transform .15s; flex-shrink: 0; }
 .tree-row.collapsed .tree-chev { transform: rotate(-90deg); }
 .tree-row.collapsed + .tree-children { display: none; }
-.tree-row.season { padding-left: 34px; font-weight: 600; background: rgba(0,0,0,.12); }
-.tree-row.episode { padding-left: 58px; }
+.tree-row.season { padding-left: 18px; font-weight: 600; background: rgba(0,0,0,.12); }
+.tree-row.episode { padding-left: 28px; }
 .tree-row .label { font-size: 13px; color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tree-row.season .label { font-size: 13.5px; }
 .tree-row.episode .label { font-size: 13px; font-weight: 500; }
 .tree-row .meta {
-  margin-left: auto; display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; gap: 10px;
   font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); flex-shrink: 0;
 }
 .tree-children { background: transparent; }

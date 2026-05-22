@@ -137,11 +137,11 @@
                   :class="{ collapsed: collapsedSrvs.has(season.key) }"
                   @click="toggleSrv(season.key)"
                 >
-                  <svg class="tree-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                   <span class="label">{{ season.label }}</span>
                   <div class="meta">
                     <span>{{ season.episodes.reduce((n, ep) => n + episodeVariantRows(ep).length, 0) }} links</span>
                   </div>
+                  <svg class="tree-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                 </div>
                 <div class="tree-children">
                   <template v-for="episode in season.episodes" :key="episode.key">
@@ -151,11 +151,11 @@
                         :class="{ collapsed: collapsedSrvs.has(episode.key) }"
                         @click="toggleSrv(episode.key)"
                       >
-                        <svg class="tree-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                         <span class="label">{{ episode.label }}</span>
                         <div class="meta">
                           <span>{{ episodeVariantRows(episode).length }} links</span>
                         </div>
+                        <svg class="tree-chev" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
                       </div>
                       <div class="tree-children">
                         <div class="lg-thead lg-grid-movie in-episode">
@@ -690,5 +690,6 @@ onUnmounted(() => clearInterval(timer))
 .time { font-size: 12px; color: var(--text-3); font-family: var(--font-mono); }
 
 /* ── Tree season/episode indent ── */
-:global(.tree-row.season), :global(.tree-row.episode) { padding-left: 18px; }
+:global(.tree-row.season)  { padding-left: 18px; }
+:global(.tree-row.episode) { padding-left: 28px; }
 </style>
