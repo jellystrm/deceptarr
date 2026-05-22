@@ -577,7 +577,7 @@ onUnmounted(() => clearInterval(timer))
   padding: 0 18px;
 }
 .lg-grid-movie.in-episode {
-  padding-left: 36px;
+  padding-left: 18px;
 }
 
 .lg-thead {
@@ -690,6 +690,5 @@ onUnmounted(() => clearInterval(timer))
 .time { font-size: 12px; color: var(--text-3); font-family: var(--font-mono); }
 
 /* ── Tree season/episode indent ── */
-:global(.tree-row.season)  { padding-left: 18px; }
-:global(.tree-row.episode) { padding-left: 28px; }
+/* tree-row indents defined globally in App.vue */
 </style>

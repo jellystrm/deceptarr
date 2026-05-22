@@ -867,15 +867,33 @@ body {
 .tree-row {
   display: flex; align-items: center; gap: 10px; padding: 10px 18px;
   cursor: pointer; user-select: none; border-bottom: 1px solid var(--border);
-  transition: background .12s;
+  transition: background .12s; position: relative;
 }
 .tree-row:last-child { border-bottom: 0; }
 .tree-row:hover { background: rgba(255,255,255,.012); }
 .tree-row .tree-chev { width: 14px; height: 14px; color: var(--text-3); transition: transform .15s; flex-shrink: 0; }
 .tree-row.collapsed .tree-chev { transform: rotate(-90deg); }
 .tree-row.collapsed + .tree-children { display: none; }
-.tree-row.season { padding-left: 18px; font-weight: 600; background: rgba(0,0,0,.12); }
-.tree-row.episode { padding-left: 28px; }
+
+/* Season — first level, indented with a horizontal connector */
+.tree-row.season {
+  padding-left: 28px;
+  font-weight: 600; background: rgba(0,0,0,.12);
+}
+.tree-row.season::before {
+  content: ''; position: absolute;
+  left: 10px; top: 50%; transform: translateY(-50%);
+  width: 12px; height: 1px; background: var(--border-2);
+}
+
+/* Episode — second level; connector extends LEFT to touch tree-children border */
+.tree-row.episode { padding-left: 18px; }
+.tree-row.episode::before {
+  content: ''; position: absolute;
+  left: -1px; top: 50%; transform: translateY(-50%);
+  width: 13px; height: 1px; background: var(--border-2);
+}
+
 .tree-row .label { font-size: 13px; color: var(--text); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .tree-row.season .label { font-size: 13.5px; }
 .tree-row.episode .label { font-size: 13px; font-weight: 500; }
@@ -883,7 +901,17 @@ body {
   display: flex; align-items: center; gap: 10px;
   font-family: var(--font-mono); font-size: 11.5px; color: var(--text-3); flex-shrink: 0;
 }
-.tree-children { background: transparent; }
+
+/* Vertical connecting lines via border-left */
+.tree-children {
+  background: transparent;
+  margin-left: 20px;
+  border-left: 1px solid var(--border-2);
+}
+.tree-children .tree-children {
+  margin-left: 14px;
+  border-left: 1px solid var(--border);
+}
 
 /* ── LinkGrabber: server header ── */
 .lg-thead-srv {
